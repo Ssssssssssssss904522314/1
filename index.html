@@ -118,7 +118,7 @@ function apiDb(){
  const q=(c,f=[])=>({where:(k,o,v)=>q(c,[...f,[k,o,v]]),get:async()=>{const params=new URLSearchParams();for(const [k,o,v] of f){params.append('where',k);params.append('op',o);params.append('value',typeof v==='string'?v:JSON.stringify(v))}const r=await fetch(base+'/api/collection/'+encodeURIComponent(c)+(params.toString()?'?'+params:''),{headers:auth()});const x=await j(r);const d=(x.docs||[]).map(a=>snap(a.id,a.data));return{docs:d,empty:!d.length}},onSnapshot(cb,er){let last='';let stopped=false;const tick=async()=>{if(stopped)return;try{const r=await this.get(),j=JSON.stringify(r.docs.map(d=>[d.id,d.data()]));if(j!==last){last=j;cb(r)}}catch(e){if(er)er(e)}};tick();const t=setInterval(tick,1200);return()=>{stopped=true;clearInterval(t)}}});
  return{doc,collection:c=>q(c)}}
 async function adminLogin(){const p=prompt('Пароль администратора EKOOOL:');if(!p)return false;try{const r=await fetch('/api/admin/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:p})}),x=await r.json();if(!r.ok||!x.token){toast(x.error||'Неверный пароль');return false}localStorage.EKOOOL_ADMIN_TOKEN=x.token;isAdmin=true;return true}catch(e){toast('Не удалось подключиться к серверу');return false}}
-async function init(){db=apiDb();isAdmin=false;
+async function init(){db=apiDb();isAdmin=false;app.innerHTML='<div class="body c" style="padding-top:22vh"><div style="font-size:48px">💬</div><h2>EKOOOL</h2><p class="note">Загрузка мессенджера…</p></div>';
  if(location.hash==='#admin'){
    try{const t=localStorage.EKOOOL_ADMIN_TOKEN;if(t){const r=await fetch('/api/admin/check',{headers:{Authorization:'Bearer '+t}});if(r.ok){isAdmin=true;return admin()}}}catch(e){}
    if(await adminLogin())return admin();
@@ -339,7 +339,7 @@ async function giftPanel(g,oid,after){if(g.style.display==='block'){g.style.disp
 const WELCOME_CH='G-JEKD6P';
 const DEFAULT_LOCK='Доступ к мессенджеру временно ограничен.';
 let LOCK={on:false,text:''};
-async function loadLock(){try{const s=await db.doc('config/lock').get();LOCK=s.exists?s.data():{on:false,text:''}}catch(e){}}
+async function loadLock(){try{const p=db.doc('config/lock').get(),to=new Promise((_,rej)=>setTimeout(()=>rej(new Error('lock timeout')),5000));const s=await Promise.race([p,to]);LOCK=s.exists?s.data():{on:false,text:''}}catch(e){LOCK={on:false,text:''}}}
 function lockScreen(){clean();app.innerHTML=`<div class="body c" style="padding-top:22vh"><div style="font-size:56px">🔒</div><h2>Доступ ограничен</h2><p style="white-space:pre-wrap">${esc(LOCK.text||DEFAULT_LOCK)}</p>${isAdmin?'<p><button class="ib" id="adl2">🛠 Админ-панель</button></p>':''}<p><button class="ib" id="rt">Повторить попытку</button></p></div>`;
  $('#rt').onclick=init;if(isAdmin)$('#adl2').onclick=admin}
 // ---- AI bot @iibot ----
