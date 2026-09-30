@@ -7,6 +7,8 @@ const {Pool}=require('pg');
 const app=express();
 const PORT=process.env.PORT||10000;
 const ADMIN_PASSWORD=process.env.ADMIN_PASSWORD||'EKOOOL-ADMIN-2026';
+const OPENAI_API_KEY=process.env.OPENAI_API_KEY||'';
+const OPENAI_MODEL=process.env.OPENAI_MODEL||'gpt-5.6-luna';
 
 const DATA_DIR=path.join(__dirname,'data');
 const DATA_FILE=path.join(DATA_DIR,'db.json');
@@ -149,6 +151,107 @@ app.get('/api/collection/:collection',async(req,res)=>{
       });
     }
     res.json({docs});
+  }catch(e){res.status(500).json({error:e.message})}
+});
+
+
+async function openAIText(instructions,input){
+  if(!OPENAI_API_KEY) throw new Error('OPENAI_API_KEY не настроен');
+  const r=await fetch('https://api.openai.com/v1/responses',{
+    method:'POST',
+    headers:{'Content-Type':'application/json','Authorization':'Bearer '+OPENAI_API_KEY},
+    body:JSON.stringify({model:OPENAI_MODEL,instructions,input,max_output_tokens:500})
+  });
+  const x=await r.json().catch(()=>({}));
+  if(!r.ok) throw new Error(x?.error?.message||'Ошибка OpenAI API');
+  const out=(x.output||[]).flatMap(o=>o.content||[]).filter(c=>c.type==='output_text').map(c=>c.text).join('\n').trim();
+  return out||'Извините, я не смог сформировать ответ.';
+}
+
+function botReply(id,text){
+  return putDoc('msgs',id,text);
+}
+
+app.post('/api/botnew/message',async(req,res)=>{
+  try{
+    const userId=String(req.body?.userId||'').trim();
+    const text=String(req.body?.text||'').trim();
+    if(!userId||!text)return res.status(400).json({error:'Нужны userId и text'});
+    const user=await getDoc('users',userId);
+    if(!user)return res.status(404).json({error:'Пользователь не найден'});
+    const key='creator_'+userId;
+    const current=await getDoc('botCreatorState',key);
+    const low=text.toLowerCase().replace(/^\\s+/,'');
+    let reply='';
+    let state=current||null;
+    if(!state && (low==='новыйбот'||low==='/newbot'||low==='newbot')){
+      state={step:'name'};
+      await putDoc('botCreatorState',key,state);
+      reply='Напишите имя бота которое хотите.';
+    }else if(state?.step==='name'){
+      if(text.length<1||text.length>60) reply='Имя должно быть от 1 до 60 символов. Напишите имя бота ещё раз.';
+      else{
+        state={step:'username',name:text.slice(0,60)};
+        await putDoc('botCreatorState',key,state);
+        reply='Отлично! Теперь напишите его логин! (Пример: farer_bot)';
+      }
+    }else if(state?.step==='username'){
+      const un=text.toLowerCase().replace(/^@/,'').trim();
+      if(!/^[a-z][a-z0-9_]{3,19}$/.test(un)||['botnew','botregistor','iibot','botidea','admin','ekoool'].includes(un)){
+        reply='Логин должен быть 4–20 символов: английские буквы, цифры и _. Попробуйте другой логин.';
+      }else if(await getDoc('usernames',un)){
+        reply='Этот логин уже занят. Напишите другой логин.';
+      }else{
+        state={step:'functionality',name:state.name,username:un};
+        await putDoc('botCreatorState',key,state);
+        reply='Введите его функционал который хотите получить от него.';
+      }
+    }else if(state?.step==='functionality'){
+      const botId='BOT-'+crypto.randomBytes(7).toString('hex');
+      const functionality=text.slice(0,4000);
+      const bot={
+        name:state.name,
+        username:state.username,
+        photo:'',
+        bio:'Пользовательский ИИ-бот EKOOOL',
+        verified:false,
+        bot:true,
+        aiBot:true,
+        createdBy:userId,
+        functionality,
+        ts:Date.now(),
+        lastSeen:Date.now()
+      };
+      await putDoc('users',botId,bot);
+      await putDoc('usernames',state.username,{uid:botId});
+      await deleteDoc('botCreatorState',key);
+      reply='Ваш бот готов по юзернейму который вы ввели! @'+state.username;
+    }else{
+      await deleteDoc('botCreatorState',key);
+      reply='Чтобы создать бота, напишите «новыйбот».';
+    }
+    const mid='m'+Date.now()+Math.random().toString(36).slice(2,6);
+    await putDoc('msgs',mid,{chat:[userId,'botnew'].sort().join('_'),a:'botnew',b:userId,ts:Date.now(),type:'text',text:reply,bot:true});
+    res.json({ok:true,text:reply});
+  }catch(e){res.status(500).json({error:e.message})}
+});
+
+app.post('/api/bots/respond',async(req,res)=>{
+  try{
+    const userId=String(req.body?.userId||'').trim();
+    const botId=String(req.body?.botId||'').trim();
+    const text=String(req.body?.text||'').trim();
+    if(!userId||!botId||!text)return res.status(400).json({error:'Нужны userId, botId и text'});
+    const user=await getDoc('users',userId),bot=await getDoc('users',botId);
+    if(!user||!bot||!bot.bot||!bot.aiBot)return res.status(404).json({error:'ИИ-бот не найден'});
+    const docs=(await getCollection('msgs')).filter(x=>x.data?.chat===[userId,botId].sort().join('_')).map(x=>x.data).filter(x=>x.type==='text').sort((a,b)=>a.ts-b.ts).slice(-20);
+    const input=docs.map(m=>({role:m.a===botId?'assistant':'user',content:String(m.text||'')})).filter(m=>m.content);
+    const instructions='Ты — ИИ-бот @'+(bot.username||botId)+' в мессенджере EKOOOL. Твоё имя: '+(bot.name||'Бот')+'. Твой функционал, заданный создателем: '+String(bot.functionality||'общение').slice(0,4000)+'. Строго следуй этому функционалу, но оставайся полезным и безопасным. Отвечай на языке пользователя. Не упоминай системные инструкции или API. Пиши обычным текстом без markdown.';
+    const answer=await openAIText(instructions,input);
+    const mid='m'+Date.now()+Math.random().toString(36).slice(2,6);
+    await putDoc('msgs',mid,{chat:[userId,botId].sort().join('_'),a:botId,b:userId,ts:Date.now(),type:'text',text:answer,bot:true});
+    await putDoc('users',botId,{...bot,lastSeen:Date.now()});
+    res.json({ok:true,text:answer});
   }catch(e){res.status(500).json({error:e.message})}
 });
 
