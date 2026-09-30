@@ -84,7 +84,7 @@ body{scroll-behavior:smooth}
 :root[data-app-theme="red"]{--bg:#fff0f0;--bg2:#fff6f6;--card:#fff;--tx:#2a1515;--mut:#8d6b6b;--pr:#ef6b73;--th:#f3d8d8}
 :root[data-app-theme="orange"]{--bg:#fff3e8;--bg2:#fff8f1;--card:#fff;--tx:#2b1b10;--mut:#8d735f;--pr:#f28a45;--th:#f3dfcf}
 :root[data-app-theme="black"] body{background:radial-gradient(900px 500px at 0% -10%,rgba(139,92,246,.16),transparent 60%),var(--bg)}
-</style></head><body><div id="app"></div>
+</style></head><body><div id="app"><div id="bootFallback" style="height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:30px;text-align:center"><div style="font-size:42px;margin-bottom:12px">💬</div><h1 style="margin:0 0 8px;color:var(--pr)">EKOOOL</h1><p style="margin:0 0 18px;color:var(--mut)">Мессенджер загружается…</p><button onclick="if(window.auth){window.auth()}else{location.reload()}" style="border:0;border-radius:12px;padding:11px 22px;background:var(--pr);color:#fff;cursor:pointer">Открыть мессенджер</button></div></div>
 <script>
 const $=s=>document.querySelector(s),app=$('#app');
 function testerInfo(e){if(e&&e.stopPropagation)e.stopPropagation();const d=document.createElement('div');d.style.cssText='position:fixed;inset:0;background:#0009;display:flex;align-items:center;justify-content:center;z-index:220;padding:20px';d.innerHTML='<div style="background:var(--card);color:var(--tx);border-radius:20px;padding:22px;width:min(88vw,360px);text-align:center;box-shadow:var(--sh)"><div style="font-size:42px">🧪</div><h3 style="margin:6px 0 8px">Метка «Тестер»</h3><p style="color:var(--mut);line-height:1.5;margin:0">Этот пользователь участвует в тестировании новых функций EKOOOL. Метка означает статус тестера и помогает отличать участников тестирования.</p><button class="pr" id="tc" style="margin-top:16px">Понятно</button></div>';document.body.appendChild(d);d.querySelector('#tc').onclick=()=>d.remove();d.onclick=x=>{if(x.target===d)d.remove()}}
@@ -607,4 +607,4 @@ async function adminUser(id){cache={};const u=await getUser(id);if(!u)return adm
  $('#dl').onclick=async()=>{if(!await askConfirm('Удалить '+id+' и все его сообщения?'))return;
   await delAcc(id);admin()}}
 init();
-</script></body></html>
+</script><script>(function(){setTimeout(function(){var a=document.getElementById("app"),f=document.getElementById("bootFallback");if(f&&a&&window.auth){try{window.auth()}catch(e){f.querySelector("p").textContent="Не удалось загрузить. Нажми «Открыть мессенджер»."}}},7000)})();</script></body></html>
