@@ -103,7 +103,11 @@ const wrapQ=q=>({where:(k,o,v)=>wrapQ(q.where(k,o,v)),get:()=>retry(()=>q.get())
 const wrapDb=d=>({doc:p=>{const r=d.doc(p);return{get:()=>retry(()=>r.get()),set:v=>retry(()=>r.set(v)),update:v=>retry(()=>r.update(v)),delete:()=>retry(()=>r.delete())}},collection:c=>wrapQ(d.collection(c))});
 function apiDb(){
  const base='';
- const auth=()=>{try{const t=localStorage.EKOOOL_ADMIN_TOKEN;return t?{'Authorization':'Bearer '+t}:{}}catch(e){return{}}};
+ const auth=()=>{try{
+   const h={};const t=localStorage.EKOOOL_ADMIN_TOKEN;if(t)h.Authorization='Bearer '+t;
+   if(me&&me.id&&me.passHash){h['X-EKOOOL-User']=me.id;h['X-EKOOOL-Proof']=me.passHash}
+   return h;
+ }catch(e){return{}}};
  const j=async(r)=>{const x=await r.json().catch(()=>({}));if(!r.ok){const e=new Error(x.error||('HTTP '+r.status));e.code=x.code||('http_'+r.status);throw e}return x};
  const snap=(id,v)=>({id,exists:v!=null,data:()=>v});
  const doc=p=>{const [c,...rest]=String(p).split('/'),i=rest.join('/');
