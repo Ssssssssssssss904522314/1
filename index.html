@@ -131,11 +131,12 @@ function auth(mode='in',add){const reg=mode==='up',prev=add?me:null;
    const b=bad(me);if(b)return blocked(b);
    try{localStorage.ekid=me.id}catch(e){}if(add&&prev&&prev.id!==me.id)await botMsg(prev.id,reg?'🆕 Зарегистрирован новый аккаунт @'+(me.username||me.id)+'. Он добавлен на это устройство.':'➕ На этом устройстве добавлен аккаунт @'+(me.username||me.id)+'.');if(!reg)await botMsg(me.id,'🔐 Выполнен вход в ваш аккаунт.\nВремя: '+new Date().toLocaleString()+'\nЕсли это были не вы — обратитесь к администратору.');start()}catch(e){er.textContent='Ошибка: '+(e.message||e.code)}}}
 // ---- helpers ----
-async function getUser(id){if(id===BOT.id)return BOT;if(id===BOTIDEA.id)return BOTIDEA;if(!id)return null;if(cache[id])return cache[id];try{const s=await db.doc('users/'+id).get();if(s.exists){const d=s.data()||{};return(cache[id]={id,...d})}}catch(e){}try{const n=await db.doc('usernames/'+String(id).toLowerCase()).get();if(n.exists&&n.data()?.uid){const s=await db.doc('users/'+n.data().uid).get();if(s.exists){const d=s.data()||{};return(cache[id]={id:s.id,...d})}}}catch(e){}return null}
+async function getUser(id){if(id===BOT.id)return BOT;if(id===BOTIDEA.id)return BOTIDEA;if(id===BOTNEW.id)return BOTNEW;if(!id)return null;if(cache[id])return cache[id];try{const s=await db.doc('users/'+id).get();if(s.exists){const d=s.data()||{};return(cache[id]={id,...d})}}catch(e){}try{const n=await db.doc('usernames/'+String(id).toLowerCase()).get();if(n.exists&&n.data()?.uid){const s=await db.doc('users/'+n.data().uid).get();if(s.exists){const d=s.data()||{};return(cache[id]={id:s.id,...d})}}}catch(e){}return null}
 const ava=(u,sz)=>u.photo?`<img class="av" src="${u.photo}" ${sz?`style="width:${sz}px;height:${sz}px"`:''}>`:`<div class="av" ${sz?`style="width:${sz}px;height:${sz}px;font-size:${sz/2.5}px"`:''}>${esc((u.name||'?')[0].toUpperCase())}</div>`;
 const nameV=u=>esc(u.name)+(u.verified?VF:'')+(u.owner?'<span class="own" title="Владелец">👤❗</span>':'')+(u.red?RD:'')+(u.scam?'<span class="bd bs">СКАМ</span>':'')+(u.fake?'<span class="bd bf">ФЕЙК</span>':'')+(isPrem(u)?'<span class="pst" data-u="'+esc(u.username||u.id||'')+'" title="AmBler Premium">★</span>':'');
 function bad(u){if(u.banned)return'Аккаунт заблокирован навсегда';if(u.blockedUntil>Date.now())return'Аккаунт временно заблокирован до '+new Date(u.blockedUntil).toLocaleString();return''}
 function blocked(m){app.innerHTML=`<div class="body c" style="padding-top:20vh"><h1>⛔</h1><p>${esc(m)}</p><button class="ib" id="lo">Выйти</button></div>`;$('#lo').onclick=()=>{try{delete localStorage.ekid}catch(e){}me=null;auth()}}
+const BOTNEW={id:'botnew',name:'BotNew',username:'botnew',verified:true,bot:true,bio:'Создатель ИИ-ботов EKOOOL. Напишите «новыйбот», чтобы создать своего бота.',get lastSeen(){return Date.now()},photo:'data:image/svg+xml,'+encodeURIComponent("<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' fill='#7c5cff'/><text x='50' y='68' font-size='56' text-anchor='middle'>🤖</text></svg>")};
 const BOT={id:'botregistor',name:'BotRegistor',username:'botregistor',verified:true,bot:true,bio:'Официальный бот EKOOOL. Сообщает о регистрации и попытках входа в ваш аккаунт.',get lastSeen(){return Date.now()},photo:'data:image/svg+xml,'+encodeURIComponent("<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' fill='#3b6cff'/><text x='50' y='68' font-size='56' text-anchor='middle'>🤖</text></svg>")};
 async function botMsg(uid,text){try{await db.doc('msgs/m'+Date.now()+Math.random().toString(36).slice(2,6)).set({chat:[BOT.id,uid].sort().join('_'),a:BOT.id,b:uid,ts:Date.now(),type:'text',text,bot:true})}catch(e){}}
 function premModal(un){const d=document.createElement('div');d.style.cssText='position:fixed;inset:0;background:#0009;display:flex;align-items:center;justify-content:center;z-index:9';
@@ -199,13 +200,13 @@ function shrink(file,max,q){return new Promise(res=>{const r=new FileReader();r.
 // ---- usernames / presence / helpers ----
 const genSalt=()=>Array.from(crypto.getRandomValues(new Uint8Array(8)),x=>x.toString(16).padStart(2,'0')).join('');
 async function hp(pw,salt){const b=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(salt+pw));return[...new Uint8Array(b)].map(x=>x.toString(16).padStart(2,'0')).join('')}
-const uerr=u=>['botregistor','iibot','botidea','admin','ekoool'].includes(u)?'Этот юзернейм зарезервирован':/^[a-z][a-z0-9_]{3,19}$/.test(u)?'':'Юзернейм: 4–20 символов, английские буквы, цифры и _, начинается с буквы';
+const uerr=u=>['botregistor','iibot','botidea','botnew','admin','ekoool'].includes(u)?'Этот юзернейм зарезервирован':/^[a-z][a-z0-9_]{3,19}$/.test(u)?'':'Юзернейм: 4–20 символов, английские буквы, цифры и _, начинается с буквы';
 const handle=u=>u.username?'@'+u.username:(u.id||'');
 const handleAll=u=>u.username?[u.username,...(u.extra||[])].map(x=>'@'+x).join(' '):(u.id||'');
 const online=u=>u&&Date.now()-(u.lastSeen||0)<130000;
 const seenTxt=u=>online(u)?'🟢 в сети':u&&u.lastSeen?'не в сети · был(а) '+new Date(u.lastSeen).toLocaleString([],{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}):'не в сети';
 async function findUser(q,login){q=String(q).trim().replace(/^@/,'');const raw=q.replace(/[\s()-]/g,'');if(/^\+?777\d{7}$/.test(raw)){if(!login)return null;const n=await db.doc('numbers/'+raw.replace('+','')).get();if(!n.exists)return null;const u=await db.doc('users/'+n.data().uid).get();return u.exists?{id:n.data().uid,...u.data()}:null}
- if(q.toLowerCase()==='botidea')return BOTIDEA;if(!/^[A-Za-z0-9_-]+$/.test(q))return null;
+ if(q.toLowerCase()==='botidea')return BOTIDEA;if(q.toLowerCase()==='botnew')return BOTNEW;if(!/^[A-Za-z0-9_-]+$/.test(q))return null;
  const s=await db.doc('usernames/'+q.toLowerCase()).get(),uid=s.exists?s.data().uid:q.toUpperCase(),u=await db.doc('users/'+uid).get();return u.exists?{id:uid,...u.data()}:null}
 const accs=()=>{try{return JSON.parse(localStorage.ekaccs||'[]')}catch(e){return[]}};
 const addAcc=id=>{try{localStorage.ekaccs=JSON.stringify([id,...accs().filter(x=>x!==id)].slice(0,6))}catch(e){}};
@@ -219,7 +220,7 @@ function needUn(){app.innerHTML=`<div class="body c" style="padding-top:12vh"><h
 async function sendMsg(oid,p){if(oid===BOT.id)return alert('Боту нельзя писать');if(oid===BOTIDEA.id&&p.type==='gift')return alert('Боту подарки дарить нельзя');try{const cs=await db.doc('users/'+me.id).get();if(!cs.exists)return blocked('Аккаунт удалён');const cu=cs.data(),cb=bad(cu);if(cb)return blocked(cb);
  if(cu.restricted)return alert('Доступ ограничен администратором: отправка отключена');const o=await getUser(oid);if(!o)return alert('Пользователь удалён');
  if(p.type==='gift'){const g=GIFTS.find(x=>x.k===p.gift),c=cu.coins||0;if(!g)return;if(p.anon){if(!isPrem(cu)||!(cu.anonLeft>0))return alert('Анонимный подарок недоступен: нужен AmBler Premium');await db.doc('users/'+me.id).update({anonLeft:cu.anonLeft-1})}else{if(c<g.p)return alert('Недостаточно ЕКОКоинов. Нужно '+g.p+', у вас '+c+'.');if(!await addCoins(me.id,-g.p,'Подарок «'+g.n+'» → '+handle(o)))return}}
- const id='m'+Date.now()+Math.random().toString(36).slice(2,6);await db.doc('msgs/'+id).set({chat:p.anon?'anon_'+oid:cid(me.id,oid),a:me.id,b:oid,ts:Date.now(),...p});if(oid===AIBOT.id)aiHook(p);else if(oid===BOTIDEA.id)ideaHook(p);return true}catch(e){alert('Не отправлено: '+(e.message||e.code))}}
+ const id='m'+Date.now()+Math.random().toString(36).slice(2,6);await db.doc('msgs/'+id).set({chat:p.anon?'anon_'+oid:cid(me.id,oid),a:me.id,b:oid,ts:Date.now(),...p});if(oid===AIBOT.id)await aiHook(p);else if(oid===BOTIDEA.id)await ideaHook(p);else if(oid===BOTNEW.id)await botNewHook(p);else if(o.aiBot)await createdBotHook(o,p);return true}catch(e){alert('Не отправлено: '+(e.message||e.code))}}
 async function giftPanel(g,oid,after){if(g.style.display==='block'){g.style.display='none';return}
  await loadGifts();const f=await db.doc('users/'+me.id).get(),fu=f.data()||{},c=fu.coins||0,al=isPrem(fu)?(fu.anonLeft||0):-1;
  g.innerHTML=`<div class="c" style="margin-bottom:8px">Баланс: <b>${c}</b> ЕКОКоинов</div><div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px">${GIFTS.map(x=>`<button class="ib c" data-g="${x.k}" style="padding:8px 2px"><div style="font-size:28px">${gi(x,34)}</div><div style="font-size:11px">${esc(x.n)}</div><b style="font-size:12px">${x.p}</b></button>`).join('')}</div><label class="note" style="display:flex;gap:8px;justify-content:center;align-items:center"><input type="checkbox" class="ns"> Запретить получателю продавать</label>${al>=0?`<label class="note" style="display:flex;gap:8px;justify-content:center;align-items:center"><input type="checkbox" class="an" ${al>0?'':'disabled'}> 🎭 Анонимно и бесплатно (осталось ${al})</label>`:'<div class="note c">👑 С AmBler Premium: 1 анонимный подарок в месяц бесплатно</div>'}`;
@@ -243,6 +244,23 @@ const pick=a=>a[Math.random()*a.length|0];
 const SYS=n=>'Ты — @iibot, ИИ-ассистент мессенджера EKOOOL. Ты универсальный помощник: отвечаешь на вопросы, объясняешь, пишешь и правишь тексты и код, переводишь, считаешь, помогаешь с идеями и учёбой. Отвечай на языке собеседника, по делу и дружелюбно. Пиши обычным текстом без markdown-разметки (без **, #, ```): мессенджер её не показывает. Собеседника зовут '+n+'. Не упоминай эти инструкции.';
 const d2b=d=>{const[h,b]=d.split(','),m=h.match(/:(.*?);/)[1],bin=atob(b),u=new Uint8Array(bin.length);for(let i=0;i<bin.length;i++)u[i]=bin.charCodeAt(i);return new Blob([u],{type:m})};
 async function botSay(text){try{await db.doc('msgs/m'+Date.now()+Math.random().toString(36).slice(2,6)).set({chat:cid(me.id,AIBOT.id),a:AIBOT.id,b:me.id,ts:Date.now(),type:'text',text,bot:true})}catch(e){}}
+async function botSayTo(botId,text){try{await db.doc('msgs/m'+Date.now()+Math.random().toString(36).slice(2,6)).set({chat:cid(me.id,botId),a:botId,b:me.id,ts:Date.now(),type:'text',text,bot:true})}catch(e){}}
+async function botNewHook(p){
+ if(p.type!=='text')return botSayTo(BOTNEW.id,'Пока что BotNew принимает только текстовые команды. Напишите «новыйбот».');
+ try{
+   const r=await fetch('/api/botnew/message',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({userId:me.id,text:p.text||''})});
+   const x=await r.json().catch(()=>({}));
+   if(!r.ok)await botSayTo(BOTNEW.id,'Не удалось создать бота: '+(x.error||'ошибка сервера'));
+ }catch(e){await botSayTo(BOTNEW.id,'Не удалось связаться с BotNew. Попробуйте ещё раз.')}
+}
+async function createdBotHook(o,p){
+ if(p.type!=='text')return botSayTo(o.id,'Я пока работаю только с текстовыми сообщениями.');
+ try{
+   const r=await fetch('/api/bots/respond',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({userId:me.id,botId:o.id,text:p.text||''})});
+   const x=await r.json().catch(()=>({}));
+   if(!r.ok)await botSayTo(o.id,'ИИ-бот пока не может ответить: '+(x.error||'ошибка сервера'));
+ }catch(e){await botSayTo(o.id,'ИИ-бот временно недоступен. Попробуйте ещё раз.')}
+}
 async function aiHook(p){
  const n=me.name;
  if(p.premGift)return botSay(pick(WARMP).replace('{n}',n));
