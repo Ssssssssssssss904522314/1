@@ -29,7 +29,7 @@ input.t,textarea.t,select.t{width:100%;padding:12px;border-radius:12px;border:1p
 .bar input{flex:1;padding:11px;border-radius:20px;border:1px solid var(--th);background:var(--bg);min-width:0}
 .rec{background:#e53935!important;color:#fff}
 .c{text-align:center}.err{color:#e53935;font-size:13px;min-height:18px}
-.bd{font-size:10px;font-weight:700;color:#fff;border-radius:6px;padding:2px 5px;margin-left:5px;vertical-align:2px}.bs{background:#e53935}.bf{background:#f59e0b}.warn{background:#fdecea;color:#b71c1c;border-radius:10px;padding:8px;margin-bottom:8px;font-size:13px;text-align:center}.nav{display:flex;border-top:1px solid var(--th)}.nav button{flex:1;background:none;border:0;padding:8px;font-size:11px;color:var(--mut);cursor:pointer}.nav .on{color:var(--pr);font-weight:600}.nav div{font-size:20px}.cel{position:fixed;inset:0;z-index:99;display:flex;align-items:center;justify-content:center;overflow:hidden;background:#0006}.cel i{position:absolute;width:8px;height:14px;border-radius:2px;animation:burst 2.2s ease-out forwards}.cel .pp{position:absolute;bottom:3%;font-size:52px;animation:pop .6s}.cel .msg{background:var(--card);border-radius:20px;padding:22px;text-align:center;width:min(86vw,320px);animation:pop .5s .3s both}@keyframes burst{0%{transform:translate(0,0) rotate(0)}45%{transform:translate(var(--dx),var(--dy)) rotate(var(--r))}100%{transform:translate(var(--dx),calc(var(--dy) + 70vh)) rotate(calc(var(--r) * 2));opacity:0}}@keyframes pop{0%{transform:scale(.2) rotate(-30deg);opacity:0}60%{transform:scale(1.25)}100%{transform:scale(1);opacity:1}}.pst{display:inline-block;color:rgba(168,85,247,.7);margin-left:4px;text-shadow:0 0 6px rgba(168,85,247,.9),0 0 16px rgba(168,85,247,.6);animation:shine 2.2s ease-in-out infinite}@keyframes shine{0%,100%{opacity:.5;transform:scale(1)}50%{opacity:1;transform:scale(1.2)}}.pst[data-u]{cursor:pointer}.own{cursor:pointer;margin-left:4px;font-size:.9em}.gbox{font-size:64px;display:inline-block}.gbox.sh{animation:shake .85s}.gbox.rv{animation:pop .6s both}@keyframes shake{0%,100%{transform:rotate(0)}20%{transform:rotate(-14deg) scale(1.1)}40%{transform:rotate(14deg) scale(1.15)}60%{transform:rotate(-10deg) scale(1.2)}80%{transform:rotate(10deg) scale(1.1)}}.note{color:var(--mut);font-size:12px;margin-top:10px}
+.bd{font-size:10px;font-weight:700;color:#fff;border-radius:6px;padding:2px 5px;margin-left:5px;vertical-align:2px}.bs{background:#e53935}.bf{background:#f59e0b}.warn{background:#fdecea;color:#b71c1c;border-radius:10px;padding:8px;margin-bottom:8px;font-size:13px;text-align:center}.nav{display:flex;border-top:1px solid var(--th)}.nav button{flex:1;background:none;border:0;padding:8px;font-size:11px;color:var(--mut);cursor:pointer}.nav .on{color:var(--pr);font-weight:600}.nav div{font-size:20px}.cel{position:fixed;inset:0;z-index:99;display:flex;align-items:center;justify-content:center;overflow:hidden;background:#0006}.cel i{position:absolute;width:8px;height:14px;border-radius:2px;animation:burst 2.2s ease-out forwards}.cel .pp{position:absolute;bottom:3%;font-size:52px;animation:pop .6s}.cel .msg{background:var(--card);border-radius:20px;padding:22px;text-align:center;width:min(86vw,320px);animation:pop .5s .3s both}@keyframes burst{0%{transform:translate(0,0) rotate(0)}45%{transform:translate(var(--dx),var(--dy)) rotate(var(--r))}100%{transform:translate(var(--dx),calc(var(--dy) + 70vh)) rotate(calc(var(--r) * 2));opacity:0}}@keyframes pop{0%{transform:scale(.2) rotate(-30deg);opacity:0}60%{transform:scale(1.25)}100%{transform:scale(1);opacity:1}}.pst{display:inline-block;color:rgba(168,85,247,.7);margin-left:4px;text-shadow:0 0 6px rgba(168,85,247,.9),0 0 16px rgba(168,85,247,.6);animation:shine 2.2s ease-in-out infinite}@keyframes shine{0%,100%{opacity:.5;transform:scale(1)}50%{opacity:1;transform:scale(1.2)}}.pst[data-u]{cursor:pointer}.own{cursor:pointer;margin-left:4px;font-size:.9em}.gbox{font-size:64px;display:inline-block}.gbox.sh{animation:shake .85s}.gbox.rv{animation:pop .6s both}@keyframes shake{0%,100%{transform:rotate(0)}20%{transform:rotate(-14deg) scale(1.1)}40%{transform:rotate(14deg) scale(1.15)}60%{transform:rotate(-10deg) scale(1.2)}80%{transform:rotate(10deg) scale(1.1)}}.note{color:var(--mut);font-size:12px;margin-top:10px}.secret-badge{display:inline-block;margin-right:5px;opacity:.75}
 #qr{display:flex;justify-content:center;margin:14px 0}#qr img,#qr canvas{background:#fff;padding:8px;border-radius:12px}
 /* ---- modern layer ---- */
 :root{--bg:#eef1f9;--bg2:#f5f7fd;--card:#fff;--tx:#131826;--mut:#6f7790;--pr:#5b6cff;--me:linear-gradient(135deg,#5b7cff,#7b5cff);--meT:#fff;--th:#eceff8;--sh:0 10px 30px rgba(30,40,90,.12)}
@@ -154,7 +154,32 @@ let lastTab;const bindNav=()=>{const on=document.querySelector('.nav .on'),ord=[
  if(b){b.classList.remove('sl','sr');if(lastTab!==undefined&&cur!==lastTab&&cur>=0)b.classList.add(cur>lastTab?'sr':'sl')}
  if(pl&&cur>=0){pl.style.transition='none';pl.style.transform='translateX('+(lastTab===undefined?cur:lastTab)*100+'%)';void pl.offsetWidth;pl.style.transition='transform .38s cubic-bezier(.25,1.2,.4,1)';pl.style.transform='translateX('+cur*100+'%)'}
  lastTab=cur;document.querySelectorAll('[data-n]').forEach(x=>x.onclick=()=>({chats:home,profile:profile,settings:settings}[x.dataset.n])())};
+
 const cid=(a,b)=>[a,b].sort().join('_');
+const SECRET_STORE='EKOOOL_SECRET_KEYS_V1';
+const secretId=oid=>[me.id,oid].sort().join('_');
+function secretMap(){try{return JSON.parse(localStorage.getItem(SECRET_STORE)||'{}')}catch(e){return{}}}
+function getSecretRaw(oid){return secretMap()[secretId(oid)]||''}
+function setSecretRaw(oid,v){const m=secretMap();if(v)m[secretId(oid)]=v;else delete m[secretId(oid)];try{localStorage.setItem(SECRET_STORE,JSON.stringify(m))}catch(e){}}
+const b64u=b=>{let s='';for(const x of b)s+=String.fromCharCode(x);return btoa(s).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'')};
+const unb64u=s=>{s=String(s||'').replace(/-/g,'+').replace(/_/g,'/');while(s.length%4)s+='=';const x=atob(s),b=new Uint8Array(x.length);for(let i=0;i<x.length;i++)b[i]=x.charCodeAt(i);return b};
+const secretGenerate=()=>b64u(crypto.getRandomValues(new Uint8Array(32)));
+async function secretKey(raw){if(!raw||raw.length<40)throw new Error('Неверный секретный ключ');return crypto.subtle.importKey('raw',unb64u(raw),'AES-GCM',false,['encrypt','decrypt'])}
+async function secretEncrypt(raw,text){const iv=crypto.getRandomValues(new Uint8Array(12)),key=await secretKey(raw),ct=await crypto.subtle.encrypt({name:'AES-GCM',iv},key,new TextEncoder().encode(text));return{iv:b64u(iv),ct:b64u(new Uint8Array(ct))}}
+async function secretDecrypt(raw,m){try{const key=await secretKey(raw),pt=await crypto.subtle.decrypt({name:'AES-GCM',iv:unb64u(m.iv)},key,unb64u(m.ct));return new TextDecoder().decode(pt)}catch(e){return '🔒 Не удалось расшифровать. Проверьте секретный ключ.'}}
+async function secretModal(oid,onDone){
+ const d=document.createElement('div');d.style.cssText='position:fixed;inset:0;background:#0009;display:flex;align-items:center;justify-content:center;z-index:180';
+ const old=getSecretRaw(oid);
+ d.innerHTML='<div style="background:var(--card);color:var(--tx);border-radius:20px;padding:20px;width:min(92vw,390px);box-shadow:var(--sh)"><div style="font-size:38px;text-align:center">🔐</div><h3 style="margin:4px 0;text-align:center">Секретный чат</h3><p class="note">Сообщения шифруются прямо в браузере. Сервер получает только зашифрованные данные. Для второго устройства/собеседника нужно передать тот же ключ.</p><input class="t" id="sk" value="'+esc(old)+'" placeholder="Секретный ключ"><div style="display:grid;gap:8px;margin-top:8px"><button class="pr" id="newk">🎲 Создать новый ключ</button><button class="ib" id="copyk">📋 Скопировать ключ</button><button class="pr" id="savek">🔒 Включить секретный чат</button>'+(old?'<button class="ib" id="offk">🔓 Удалить ключ с этого устройства</button>':'')+'<button class="ib" id="closek">Отмена</button></div></div>';
+ document.body.appendChild(d);
+ const inp=d.querySelector('#sk');
+ d.querySelector('#newk').onclick=()=>{inp.value=secretGenerate();inp.select()};
+ d.querySelector('#copyk').onclick=async()=>{const v=inp.value.trim();if(!v)return alert('Сначала создайте или введите ключ');try{await navigator.clipboard.writeText(v);alert('Ключ скопирован')}catch(e){inp.select();alert('Не удалось скопировать. Выделите ключ и скопируйте его вручную.')}};
+ d.querySelector('#savek').onclick=()=>{const v=inp.value.trim();if(v.length<40)return alert('Ключ слишком короткий');setSecretRaw(oid,v);d.remove();onDone(true)};
+ if(d.querySelector('#offk'))d.querySelector('#offk').onclick=()=>{setSecretRaw(oid,'');d.remove();onDone(false)};
+ d.querySelector('#closek').onclick=()=>d.remove();
+}
+
 function clean(){unsub.forEach(f=>f());unsub=[];app.style.removeProperty('--me')}
 // ---- home ----
 function home(){clean();
@@ -163,7 +188,7 @@ function home(){clean();
  const seen={};let myG=[];let allUsers=[];let searchTimer=0;
  const draw=async()=>{const arr=Object.values(seen).sort((a,b)=>b.ts-a.ts);
   const rows=await Promise.all(arr.map(async m=>{if(m.anon)return`<div class="row" data-id="anon"><div class="av">🎁</div><div><div class="n">Анонимные подарки</div><div class="s">🎭 Подарок от неизвестного</div></div></div>`;const o=m.a===me.id?m.b:m.a,u=await getUser(o)||{name:o};
-   return`<div class="row" data-id="${esc(o)}">${ava(u)}<div><div class="n">${nameV(u)}</div><div class="s">${m.type==='gift'?'🎁 Подарок':m.type==='img'?'📷 Фото':m.type==='voice'?'🎤 Голосовое':esc((m.text||'').slice(0,40))}</div></div></div>`}));
+   return`<div class="row" data-id="${esc(o)}">${ava(u)}<div><div class="n">${nameV(u)}</div><div class="s">${m.secret?'🔒 Секретное сообщение':m.type==='gift'?'🎁 Подарок':m.type==='img'?'📷 Фото':m.type==='voice'?'🎤 Голосовое':esc((m.text||'').slice(0,40))}</div></div></div>`}));
   const q=($('#hs')?.value||'').trim().toLowerCase();
   if(q){
     if(!allUsers.length){try{const ur=await db.collection('users').get();allUsers=(Array.isArray(ur?.docs)?ur.docs:[]).map(d=>({id:d.id,...d.data()}))}catch(e){allUsers=[]}}
@@ -181,14 +206,28 @@ function addChat(){clean();
  $('#bk').onclick=home;$('#ng').onclick=()=>createGroup(false);$('#nc').onclick=()=>createGroup(true);$('#go').onclick=async()=>{const gv=$('#tid').value.trim();if(/^G-[A-Z0-9]{6}$/i.test(gv))return joinGroup(gv.toUpperCase());const u=await findUser($('#tid').value);if(!u)return $('#er').textContent='Пользователь не найден';if(u.id===me.id)return $('#er').textContent='Это вы';chat(u.id)}}
 // ---- chat ----
 async function chat(oid){clean();delete cache[oid];await loadGifts();let o=await getUser(oid);if(!o){try{o=await findUser(oid,true)}catch(e){}}o=o||{id:oid,name:(String(oid).startsWith('EK-')?'Пользователь':oid),username:''};if(!o.name)o.name=o.username?'@'+o.username:'Пользователь';if(!o.photo)o.photo='';cache[oid]=o;const k=cid(me.id,oid);
- app.innerHTML=`<div class="top"><button class="ib" id="bk">←</button>${ava(o,36)}<div id="hd" style="flex:1;cursor:pointer;min-width:0"><h1 style="font-size:16px">${nameV(o)}</h1><div id="st" style="font-size:12px;color:var(--mut)">${seenTxt(o)}</div></div><button class="ib" id="dc">🗑</button></div><div class="body">${o.scam?'<div class="warn">⚠️ Пользователь отмечен как СКАМ. Не переводите деньги и не сообщайте данные.</div>':''}${o.fake?'<div class="warn">🎭 Аккаунт отмечен как ФЕЙК.</div>':''}<div class="msgs" id="ms"></div></div>
+ app.innerHTML=`<div class="top"><button class="ib" id="bk">←</button>${ava(o,36)}<div id="hd" style="flex:1;cursor:pointer;min-width:0"><h1 style="font-size:16px">${nameV(o)}</h1><div id="st" style="font-size:12px;color:var(--mut)">${seenTxt(o)}</div></div><button class="ib" id="sc" title="Секретный чат">${getSecretRaw(oid)?'🔒':'🔓'}</button><button class="ib" id="dc">🗑</button></div><div class="body">${o.scam?'<div class="warn">⚠️ Пользователь отмечен как СКАМ. Не переводите деньги и не сообщайте данные.</div>':''}${o.fake?'<div class="warn">🎭 Аккаунт отмечен как ФЕЙК.</div>':''}<div class="msgs" id="ms"></div></div>
  <div id="gp" style="display:none;padding:10px;border-top:1px solid var(--th);max-height:42vh;overflow:auto"></div>
  <div class="bar"><label class="ib" id="im" for="fl">📷</label><button class="ib" id="gf">🎁</button><input id="tx" placeholder="Сообщение"><button class="ib" id="mic">🎤</button><button class="pr" id="sd">➤</button></div><input type="file" id="fl" accept="image/*" hidden>`;
+ let secretMode=!!getSecretRaw(oid);
  $('#bk').onclick=home;$('#hd').onclick=()=>viewUser(oid);
+ $('#sc').onclick=async()=>{if(!getSecretRaw(oid))return secretModal(oid,v=>{secretMode=!!v;$('#sc').textContent=secretMode?'🔒':'🔓';renderMessages()});secretMode=!secretMode;$('#sc').textContent=secretMode?'🔒':'🔓';renderMessages()};
  const th=me.theme;if(isPrem(me)&&th&&th.bg){$('.body').style.background=th.bg;app.style.setProperty('--me',th.me)}
  $('#dc').onclick=async()=>{if(!await askConfirm('Удалить чат у обоих? Все сообщения и подарки в нём пропадут.'))return;const r=await db.collection('msgs').where('chat','==',cid(me.id,oid)).get();for(const d of r.docs)await db.doc('msgs/'+d.id).delete();home()};
  const iv=setInterval(async()=>{try{const x=await db.doc('users/'+oid).get();if(x.exists&&$('#st'))$('#st').textContent=seenTxt(x.data())}catch(e){}},30000);unsub.push(()=>clearInterval(iv));
- const send=p=>sendMsg(oid,p);
+ const send=async p=>{
+  if(secretMode){
+    if(p.type!=='text')return alert('В секретном чате пока доступны только текстовые сообщения.');
+    const raw=getSecretRaw(oid);if(!raw)return secretModal(oid,v=>{secretMode=!!v;$('#sc').textContent=secretMode?'🔒':'🔓';renderMessages()});
+    try{
+      const enc=await secretEncrypt(raw,p.text||'');
+      const id='m'+Date.now()+Math.random().toString(36).slice(2,6);
+      await db.doc('msgs/'+id).set({chat:cid(me.id,oid),a:me.id,b:oid,ts:Date.now(),type:'text',secret:true,iv:enc.iv,ct:enc.ct});
+      return true;
+    }catch(e){alert('Не удалось зашифровать сообщение: '+(e.message||e));return false}
+  }
+  return sendMsg(oid,p);
+};
  $('#sd').onclick=()=>{const v=$('#tx').value.trim();if(v){$('#tx').value='';send({type:'text',text:v})}};
  $('#tx').onkeydown=e=>{if(e.key==='Enter')$('#sd').click()};
 
@@ -201,10 +240,27 @@ async function chat(oid){clean();delete cache[oid];await loadGifts();let o=await
    rec.onstop=()=>{st.getTracks().forEach(t=>t.stop());b.classList.remove('rec');b.textContent='🎤';const bl=new Blob(chunks,{type:rec.mimeType});
     if(bl.size>600000)return alert('Слишком длинное (макс. ~30 сек)');const r=new FileReader();r.onload=()=>send({type:'voice',data:r.result});r.readAsDataURL(bl)};
    rec.start();b.classList.add('rec');b.textContent='⏹';setTimeout(()=>rec.state==='recording'&&rec.stop(),30000)}catch(e){alert('Нет доступа к микрофону')}};
- unsub.push(db.collection('msgs').where('chat','==',k).onSnapshot(s=>{const ms=s.docs.map(d=>({...d.data(),id:d.id})).sort((a,b)=>a.ts-b.ts),el=$('#ms');if(!el)return;
-  el.innerHTML=ms.map(m=>`<div class="m ${m.a===me.id?'me':''}">${m.type==='gift'?gh(m):m.type==='img'?`<img src="${m.data}">`:m.type==='voice'?`<audio controls src="${m.data}"></audio>`:esc(m.text)}<small>${new Date(m.ts).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})}</small></div>`).join('');
-  window.M=Object.fromEntries(ms.map(x=>[x.id,x]));el.querySelectorAll('[data-v]').forEach(b=>b.onclick=()=>giftView(M[b.dataset.v]));
-  const b=el.parentElement;b.scrollTop=b.scrollHeight}))
+ const renderMessages=async()=>{
+   const el=$('#ms');if(!el)return;
+   const ss=await db.collection('msgs').where('chat','==',k).get();
+   const ms=ss.docs.map(d=>({...d.data(),id:d.id})).sort((a,b)=>a.ts-b.ts);
+   const raw=getSecretRaw(oid);
+   const html=[];
+   for(const m of ms){
+     let body='';
+     if(m.secret)body=raw?esc(await secretDecrypt(raw,m)):'🔒 Секретное сообщение — введите ключ через 🔒';
+     else if(m.type==='gift')body=gh(m);
+     else if(m.type==='img')body=`<img src="${m.data}">`;
+     else if(m.type==='voice')body=`<audio controls src="${m.data}"></audio>`;
+     else body=esc(m.text);
+     html.push(`<div class="m ${m.a===me.id?'me':''}">${m.secret?'<span class="secret-badge">🔒</span>':''}${body}<small>${new Date(m.ts).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})}</small></div>`);
+   }
+   el.innerHTML=html.join('');
+   window.M=Object.fromEntries(ms.map(x=>[x.id,x]));el.querySelectorAll('[data-v]').forEach(b=>b.onclick=()=>giftView(M[b.dataset.v]));
+   const b=el.parentElement;b.scrollTop=b.scrollHeight;
+ };
+ unsub.push(db.collection('msgs').where('chat','==',k).onSnapshot(()=>renderMessages()));
+ renderMessages();
  if(oid===BOT.id)$('.bar').innerHTML='<div class="note c" style="flex:1;margin:4px">Служебный бот: отвечать ему нельзя</div>'}
 function shrink(file,max,q){return new Promise(res=>{const r=new FileReader();r.onload=()=>{const i=new Image();i.onload=()=>{let m=max,qq=q,out;for(let k=0;k<8;k++){const s=Math.min(1,m/Math.max(i.width,i.height)),c=document.createElement('canvas');c.width=Math.round(i.width*s);c.height=Math.round(i.height*s);c.getContext('2d').drawImage(i,0,0,c.width,c.height);out=c.toDataURL('image/jpeg',qq);if(out.length<170000)break;qq=Math.max(.4,qq-.1);m=Math.round(m*.85)}res(out)};i.onerror=()=>res(null);i.src=r.result};r.onerror=()=>res(null);r.readAsDataURL(file)})}
 // ---- usernames / presence / helpers ----
