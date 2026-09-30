@@ -70,6 +70,12 @@ label.ib{display:inline-flex;align-items:center;justify-content:center;user-sele
 .nav .on div{transform:translateY(-1px) scale(1.18)}
 .warn{border-radius:14px}
 @media(prefers-reduced-motion:reduce){.body,.body.sr,.body.sl,.m:last-child{animation:none}}
+
+/* ultra-smooth scrolling */
+html{scroll-behavior:smooth;-webkit-overflow-scrolling:touch}
+body{scroll-behavior:smooth}
+.body,.msgs,.list{scroll-behavior:smooth;-webkit-overflow-scrolling:touch}
+*{scrollbar-width:thin}
 </style></head><body><div id="app"></div>
 <script>
 const $=s=>document.querySelector(s),app=$('#app');
