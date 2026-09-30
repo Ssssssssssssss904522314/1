@@ -1,1 +1,0 @@
-EKOOOL server-backed build. Render Start Command: node server.js. Set ADMIN_PASSWORD in Environment Variables. The app uses a shared server JSON database in data/db.json. For durable production storage, migrate the data layer to Postgres or attach persistent storage.
