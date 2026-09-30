@@ -6,7 +6,7 @@ const {Pool}=require('pg');
 
 const app=express();
 const PORT=process.env.PORT||10000;
-const ADMIN_PASSWORD=process.env.ADMIN_PASSWORD||'EKOOOL-ADMIN-2026';
+const ADMIN_PASSWORD=process.env.ADMIN_PASSWORD||'';
 const GROQ_API_KEY=process.env.GROQ_API_KEY||'';
 const GROQ_MODEL=process.env.GROQ_MODEL||'openai/gpt-oss-20b';
 
@@ -97,7 +97,41 @@ async function getCollection(c){
 }
 
 function adminToken(){return crypto.createHmac('sha256',ADMIN_PASSWORD).update('ekoool-admin').digest('hex')}
-function isAdmin(req){return (req.headers.authorization||'')==='Bearer '+adminToken()}
+function isAdmin(req){return !!ADMIN_PASSWORD&&(req.headers.authorization||'')==='Bearer '+adminToken()}
+async function userAuth(req){
+  const uid=String(req.headers['x-ekoool-user']||'').trim();
+  const proof=String(req.headers['x-ekoool-proof']||'').trim();
+  if(!uid||!proof)return null;
+  const u=await getDoc('users',uid);
+  return u&&u.passHash&&proof===u.passHash?{id:uid,...u}:null;
+}
+function publicUser(u){if(!u)return null;const x={...u};delete x.passHash;delete x.salt;return x}
+async function canWriteDoc(req,c,id,body){
+  if(isAdmin(req))return true;
+  const u=await userAuth(req);if(!u)return false;
+  if(c==='users')return id===u.id;
+  if(c==='usernames'){
+    if(body&&body.uid)return body.uid===u.id;
+    const old=await getDoc(c,id);return !old||old.uid===u.id;
+  }
+  if(['msgs','gmsgs','gm'].includes(c)){
+    const old=await getDoc(c,id);const d=body&&Object.keys(body).length?{...(old||{}),...body}:old;
+    return !!d&&(d.a===u.id||d.b===u.id||d.uid===u.id);
+  }
+  if(c==='txs')return !body?.uid||body.uid===u.id;
+  if(c==='groups'){
+    const old=await getDoc(c,id);const d={...(old||{}),...(body||{})};
+    return d.owner===u.id;
+  }
+  return false;
+}
+const loginAttempts=new Map();
+function adminLoginAllowed(ip){
+  const now=Date.now(),a=loginAttempts.get(ip)||{n:0,at:now};
+  if(now-a.at>10*60*1000){a.n=0;a.at=now}
+  if(a.n>=10)return false;
+  a.n++;loginAttempts.set(ip,a);return true;
+}
 
 app.use(express.json({limit:'12mb'}));
 app.use((req,res,next)=>{
@@ -109,6 +143,8 @@ app.use((req,res,next)=>{
 });
 
 app.post('/api/admin/login',(req,res)=>{
+  if(!ADMIN_PASSWORD)return res.status(503).json({error:'ADMIN_PASSWORD не настроен'});
+  if(!adminLoginAllowed(req.ip))return res.status(429).json({error:'Слишком много попыток. Повторите позже.'});
   if(String(req.body?.password||'')!==ADMIN_PASSWORD)return res.status(401).json({error:'Неверный пароль'});
   res.json({token:adminToken()});
 });
@@ -119,21 +155,35 @@ app.get('/api/doc/:collection/:id',async(req,res)=>{
   catch(e){res.status(500).json({error:e.message})}
 });
 app.put('/api/doc/:collection/:id',async(req,res)=>{
-  try{await putDoc(req.params.collection,req.params.id,req.body||{});res.json({ok:true})}
-  catch(e){res.status(500).json({error:e.message})}
+  try{
+    if(!(await canWriteDoc(req,req.params.collection,req.params.id,req.body||{})))return res.status(403).json({error:'Forbidden'});
+    await putDoc(req.params.collection,req.params.id,req.body||{});res.json({ok:true})
+  }catch(e){res.status(500).json({error:e.message})}
 });
 app.patch('/api/doc/:collection/:id',async(req,res)=>{
-  try{await patchDoc(req.params.collection,req.params.id,req.body||{});res.json({ok:true})}
-  catch(e){res.status(500).json({error:e.message})}
+  try{
+    if(!(await canWriteDoc(req,req.params.collection,req.params.id,req.body||{})))return res.status(403).json({error:'Forbidden'});
+    await patchDoc(req.params.collection,req.params.id,req.body||{});res.json({ok:true})
+  }catch(e){res.status(500).json({error:e.message})}
 });
 app.delete('/api/doc/:collection/:id',async(req,res)=>{
-  try{await deleteDoc(req.params.collection,req.params.id);res.json({ok:true})}
-  catch(e){res.status(500).json({error:e.message})}
+  try{
+    if(!(await canWriteDoc(req,req.params.collection,req.params.id,{})))return res.status(403).json({error:'Forbidden'});
+    await deleteDoc(req.params.collection,req.params.id);res.json({ok:true})
+  }catch(e){res.status(500).json({error:e.message})}
 });
 
 app.get('/api/collection/:collection',async(req,res)=>{
   try{
-    let docs=await getCollection(req.params.collection);
+    const c=req.params.collection;
+    let docs=await getCollection(c);
+    if(c==='msgs'||c==='gmsgs'||c==='gm'||c==='txs'){
+      const u=await userAuth(req);
+      if(!u&&!isAdmin(req))return res.status(401).json({error:'Unauthorized'});
+      if(!isAdmin(req)){
+        docs=docs.filter(d=>d.data?.a===u.id||d.data?.b===u.id||d.data?.uid===u.id);
+      }
+    }
     let w=req.query.where;
     let ws=Array.isArray(w)?w:(w?[w]:[]);
     if(ws.length){
@@ -149,6 +199,10 @@ app.get('/api/collection/:collection',async(req,res)=>{
         }
         return true;
       });
+    }
+    if(c==='users'&&!isAdmin(req)){
+      const u=await userAuth(req);
+      docs=docs.map(d=>d.id===u?.id?d:{id:d.id,data:publicUser(d.data)});
     }
     res.json({docs});
   }catch(e){res.status(500).json({error:e.message})}
@@ -175,6 +229,7 @@ function botReply(id,text){
 
 app.post('/api/botnew/message',async(req,res)=>{
   try{
+    const au=await userAuth(req);if(!au||au.id!==String(req.body?.userId||''))return res.status(401).json({error:'Unauthorized'});
     const userId=String(req.body?.userId||'').trim();
     const text=String(req.body?.text||'').trim();
     if(!userId||!text)return res.status(400).json({error:'Нужны userId и text'});
@@ -239,6 +294,7 @@ app.post('/api/botnew/message',async(req,res)=>{
 
 app.post('/api/bots/respond',async(req,res)=>{
   try{
+    const au=await userAuth(req);if(!au||au.id!==String(req.body?.userId||''))return res.status(401).json({error:'Unauthorized'});
     const userId=String(req.body?.userId||'').trim();
     const botId=String(req.body?.botId||'').trim();
     const text=String(req.body?.text||'').trim();
