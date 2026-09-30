@@ -162,8 +162,18 @@ app.post('/api/admin/login',(req,res)=>{
 app.get('/api/admin/check',(req,res)=>isAdmin(req)?res.json({ok:true}):res.status(401).json({error:'Unauthorized'}));
 
 app.get('/api/doc/:collection/:id',async(req,res)=>{
-  try{res.json({data:await getDoc(req.params.collection,req.params.id)})}
-  catch(e){res.status(500).json({error:e.message})}
+  try{
+    const c=req.params.collection,id=req.params.id;let data=await getDoc(c,id);
+    if(['msgs','gmsgs','gm','txs'].includes(c)&&!isAdmin(req)){
+      const u=await userAuth(req);if(!u)return res.status(401).json({error:'Unauthorized'});
+      if(data&&(data.a!==u.id&&data.b!==u.id&&data.uid!==u.id))return res.status(403).json({error:'Forbidden'});
+    }
+    if(c==='users'&&!isAdmin(req)){
+      const u=await userAuth(req);
+      if(!u||u.id!==id)data=publicUser(data);
+    }
+    res.json({data})
+  }catch(e){res.status(500).json({error:e.message})}
 });
 app.put('/api/doc/:collection/:id',async(req,res)=>{
   try{
