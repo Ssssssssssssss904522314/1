@@ -108,7 +108,18 @@ async function userAuth(req){
 function publicUser(u){if(!u)return null;const x={...u};delete x.passHash;delete x.salt;return x}
 async function canWriteDoc(req,c,id,body){
   if(isAdmin(req))return true;
-  const u=await userAuth(req);if(!u)return false;
+  const u=await userAuth(req);
+  if(!u){
+    if(c==='users'){
+      const old=await getDoc(c,id);
+      return !old&&!!body?.passHash&&!!body?.salt;
+    }
+    if(c==='usernames'&&body?.uid){
+      const target=await getDoc('users',String(body.uid));
+      return !!target&&!!target.passHash&&Date.now()-(target.ts||0)<10*60*1000&&!await getDoc(c,id);
+    }
+    return false;
+  }
   if(c==='users')return id===u.id;
   if(c==='usernames'){
     if(body&&body.uid)return body.uid===u.id;
