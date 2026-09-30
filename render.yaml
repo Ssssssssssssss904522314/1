@@ -1,9 +1,0 @@
-services:
-  - type: web
-    name: ekool-server
-    runtime: node
-    buildCommand: npm install
-    startCommand: node server.js
-    envVars:
-      - key: ADMIN_PASSWORD
-        sync: false
