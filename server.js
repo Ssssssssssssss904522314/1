@@ -7,8 +7,8 @@ const {Pool}=require('pg');
 const app=express();
 const PORT=process.env.PORT||10000;
 const ADMIN_PASSWORD=process.env.ADMIN_PASSWORD||'EKOOOL-ADMIN-2026';
-const OPENAI_API_KEY=process.env.OPENAI_API_KEY||'';
-const OPENAI_MODEL=process.env.OPENAI_MODEL||'gpt-5.6-luna';
+const GROQ_API_KEY=process.env.GROQ_API_KEY||'';
+const GROQ_MODEL=process.env.GROQ_MODEL||'openai/gpt-oss-20b';
 
 const DATA_DIR=path.join(__dirname,'data');
 const DATA_FILE=path.join(DATA_DIR,'db.json');
@@ -156,15 +156,16 @@ app.get('/api/collection/:collection',async(req,res)=>{
 
 
 async function openAIText(instructions,input){
-  if(!OPENAI_API_KEY) throw new Error('OPENAI_API_KEY не настроен');
-  const r=await fetch('https://api.openai.com/v1/responses',{
+  if(!GROQ_API_KEY) throw new Error('GROQ_API_KEY не настроен');
+  const messages=[{role:'system',content:instructions},...(Array.isArray(input)?input:[])];
+  const r=await fetch('https://api.groq.com/openai/v1/chat/completions',{
     method:'POST',
-    headers:{'Content-Type':'application/json','Authorization':'Bearer '+OPENAI_API_KEY},
-    body:JSON.stringify({model:OPENAI_MODEL,instructions,input,max_output_tokens:500})
+    headers:{'Content-Type':'application/json','Authorization':'Bearer '+GROQ_API_KEY},
+    body:JSON.stringify({model:GROQ_MODEL,messages,max_tokens:500,temperature:0.7})
   });
   const x=await r.json().catch(()=>({}));
-  if(!r.ok) throw new Error(x?.error?.message||'Ошибка OpenAI API');
-  const out=(x.output||[]).flatMap(o=>o.content||[]).filter(c=>c.type==='output_text').map(c=>c.text).join('\n').trim();
+  if(!r.ok) throw new Error(x?.error?.message||'Ошибка Groq API');
+  const out=String(x?.choices?.[0]?.message?.content||'').trim();
   return out||'Извините, я не смог сформировать ответ.';
 }
 
