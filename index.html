@@ -76,6 +76,14 @@ html{scroll-behavior:smooth;-webkit-overflow-scrolling:touch}
 body{scroll-behavior:smooth}
 .body,.msgs,.list{scroll-behavior:smooth;-webkit-overflow-scrolling:touch}
 *{scrollbar-width:thin}
+
+/* EKOOOL app themes */
+:root[data-app-theme="white"]{--bg:#f4f6fb;--bg2:#f7f8fc;--card:#fff;--tx:#131826;--mut:#6f7790;--pr:#5b6cff;--th:#e5e9f2}
+:root[data-app-theme="black"]{--bg:#050505;--bg2:#080808;--card:#111;--tx:#f5f5f5;--mut:#9b9b9b;--pr:#8b5cf6;--th:#242424}
+:root[data-app-theme="purple"]{--bg:#f0eaff;--bg2:#f7f2ff;--card:#fff;--tx:#241631;--mut:#77658c;--pr:#8b5cf6;--th:#e6d9f7}
+:root[data-app-theme="red"]{--bg:#fff0f0;--bg2:#fff6f6;--card:#fff;--tx:#2a1515;--mut:#8d6b6b;--pr:#ef6b73;--th:#f3d8d8}
+:root[data-app-theme="orange"]{--bg:#fff3e8;--bg2:#fff8f1;--card:#fff;--tx:#2b1b10;--mut:#8d735f;--pr:#f28a45;--th:#f3dfcf}
+:root[data-app-theme="black"] body{background:radial-gradient(900px 500px at 0% -10%,rgba(139,92,246,.16),transparent 60%),var(--bg)}
 </style></head><body><div id="app"></div>
 <script>
 const $=s=>document.querySelector(s),app=$('#app');
@@ -284,7 +292,25 @@ async function findUser(q,login){q=String(q).trim().replace(/^@/,'');const raw=q
 const accs=()=>{try{return JSON.parse(localStorage.ekaccs||'[]')}catch(e){return[]}};
 const addAcc=id=>{try{localStorage.ekaccs=JSON.stringify([id,...accs().filter(x=>x!==id)].slice(0,6))}catch(e){}};
 let hbt=null;function beat(){const p=async()=>{if(!me)return;await loadLock();if(LOCK.on&&!isAdmin)return lockScreen();try{await db.doc('users/'+me.id).update({lastSeen:Date.now()})}catch(e){}};p();if(!hbt)hbt=setInterval(p,60000)}
-function start(){addAcc(me.id);loadGifts();beat();grantCheck().catch(()=>{});me.username?home():needUn()}
+function applyAppTheme(){
+ const allowed=['white','black','purple','red','orange'];
+ let t='white';
+ try{t=localStorage.getItem('EKOOOL_APP_THEME_'+(me&&me.id||''))||'white'}catch(e){}
+ if(!allowed.includes(t))t='white';
+ document.documentElement.setAttribute('data-app-theme',t);
+}
+function appTheme(){
+ const names={white:'Белое',black:'Чёрное',purple:'Пурпуровое',red:'Светлокрасное',orange:'Светлооранжевое'};
+ const cur=(document.documentElement.getAttribute('data-app-theme')||'white');
+ sub('Оформление',settings,'<p class="note">Выберите оформление всего мессенджера:</p><div style="display:grid;gap:10px">'+Object.entries(names).map(([k,n])=>'<button class="ib" data-app-t="'+k+'" style="width:100%;text-align:left;padding:14px;border:2px solid '+(cur===k?'var(--pr)':'var(--th)')+';background:'+(k==='black'?'#111':k==='purple'?'#f0eaff':k==='red'?'#fff0f0':k==='orange'?'#fff3e8':'#fff')+';color:'+(k==='black'?'#fff':'var(--tx)')+'">'+(k==='white'?'⚪':k==='black'?'⚫':k==='purple'?'🟣':k==='red'?'🔴':'🟠')+' '+n+'</button>').join('')+'</div>');
+ document.querySelectorAll('[data-app-t]').forEach(b=>b.onclick=()=>{
+   const t=b.dataset.appT;
+   try{localStorage.setItem('EKOOOL_APP_THEME_'+me.id,t)}catch(e){}
+   document.documentElement.setAttribute('data-app-theme',t);
+   appTheme();
+ });
+}
+function start(){applyAppTheme();addAcc(me.id);loadGifts();beat();grantCheck().catch(()=>{});me.username?home():needUn()}
 async function setUsername(raw){const un=raw.trim().toLowerCase().replace(/^@/,''),e=uerr(un);if(e)return e;if(un===me.username)return'';
  if((await db.doc('usernames/'+un).get()).exists)return'Юзернейм занят';await db.doc('usernames/'+un).set({uid:me.id});
  if(me.username)await db.doc('usernames/'+me.username).delete();await db.doc('users/'+me.id).update({username:un});me.username=un;cache={};return''}
@@ -483,9 +509,9 @@ async function viewUser(id){if(id===BOT.id)return sub('Профиль',()=>chat(
 async function settings(){clean();await fresh();
  const others=await Promise.all(accs().filter(x=>x!==me.id).map(async id=>{const u=await getUser(id);return u?`<button class="ib" data-sw="${id}" style="width:100%;text-align:left;margin-bottom:8px;padding:13px">🔁 Переключиться: ${esc(u.name)} ${esc(handle(u))}</button>`:''}));
  const B=(i,t)=>`<button class="ib" id="${i}" style="width:100%;text-align:left;margin-bottom:8px;padding:13px">${t}</button>`;
- app.innerHTML=`<div class="top"><h1>Настройки</h1></div><div class="body"><p style="font-size:17px">💰 <b>${me.coins||0}</b> ЕКОКоинов</p>${isPrem(me)?`<p class="note">👑 AmBler Premium до ${new Date(me.premiumUntil).toLocaleDateString()}</p>`:''}${B('s8','👑 AmBler Premium')}${B('s9','🎨 Оформление чатов')}${B('s10','🔴 Заявка на красную галочку')}${B('s11','📞 Анонимный номер')}${B('s12','➕ Добавить аккаунт')}${others.join('')}${B('s1','✏️ Редактировать профиль')}${B('s2','🎁 Подарить коины')}${B('s3','📜 История коинов')}${B('s4','🔤 Юзернеймы')}${B('s5','🗑 Удалить аккаунт')}${canAdmin()?B('s6','🛠 Админ-панель'):''}${B('s7','Выйти')}</div>${nav('settings')}`;
+ app.innerHTML=`<div class="top"><h1>Настройки</h1></div><div class="body"><p style="font-size:17px">💰 <b>${me.coins||0}</b> ЕКОКоинов</p>${isPrem(me)?`<p class="note">👑 AmBler Premium до ${new Date(me.premiumUntil).toLocaleDateString()}</p>`:''}${B('s8','👑 AmBler Premium')}${B('s13','🎨 Оформление')}${B('s9','🎨 Оформление чатов')}${B('s10','🔴 Заявка на красную галочку')}${B('s11','📞 Анонимный номер')}${B('s12','➕ Добавить аккаунт')}${others.join('')}${B('s1','✏️ Редактировать профиль')}${B('s2','🎁 Подарить коины')}${B('s3','📜 История коинов')}${B('s4','🔤 Юзернеймы')}${B('s5','🗑 Удалить аккаунт')}${canAdmin()?B('s6','🛠 Админ-панель'):''}${B('s7','Выйти')}</div>${nav('settings')}`;
  bindNav();$('#s12').onclick=()=>auth('in',true);document.querySelectorAll('[data-sw]').forEach(b=>b.onclick=async()=>{const sn=await db.doc('users/'+b.dataset.sw).get();if(!sn.exists)return toast('Аккаунт не найден');me={id:b.dataset.sw,...sn.data()};try{localStorage.ekid=me.id}catch(e){}cache={};const bb=bad(me);bb?blocked(bb):start()});
- $('#s11').onclick=numScreen;$('#s10').onclick=async()=>{if(me.red)return alert('У вас уже есть красная галочка 🔴');if(me.redReq)return alert('Заявка уже отправлена. Ожидайте решения администратора.');if(!await askConfirm('Подать заявку на красную галочку? Она подтверждает, что аккаунт принадлежит человеку, а не боту.'))return;await db.doc('users/'+me.id).update({redReq:true});me.redReq=true;alert('Заявка отправлена ✔')};$('#s8').onclick=premium;$('#s9').onclick=chatTheme;$('#s1').onclick=editProfile;$('#s2').onclick=giftCoins;$('#s3').onclick=coinHistory;$('#s4').onclick=unScreen;
+ $('#s11').onclick=numScreen;$('#s10').onclick=async()=>{if(me.red)return alert('У вас уже есть красная галочка 🔴');if(me.redReq)return alert('Заявка уже отправлена. Ожидайте решения администратора.');if(!await askConfirm('Подать заявку на красную галочку? Она подтверждает, что аккаунт принадлежит человеку, а не боту.'))return;await db.doc('users/'+me.id).update({redReq:true});me.redReq=true;alert('Заявка отправлена ✔')};$('#s8').onclick=premium;$('#s13').onclick=appTheme;$('#s9').onclick=chatTheme;$('#s1').onclick=editProfile;$('#s2').onclick=giftCoins;$('#s3').onclick=coinHistory;$('#s4').onclick=unScreen;
  $('#s5').onclick=async()=>{if(!await askConfirm('Удалить аккаунт навсегда вместе с сообщениями?'))return;await delAcc(me.id);try{delete localStorage.ekid}catch(e){}me=null;auth()};
  if(canAdmin())$('#s6').onclick=admin;$('#s7').onclick=()=>{const id0=me.id;try{delete localStorage.ekid;localStorage.ekaccs=JSON.stringify(accs().filter(x=>x!==id0))}catch(e){}me=null;auth()}}
 function editProfile(){sub('Редактировать',settings,`<div class="c"><div id="pa" style="display:flex;justify-content:center">${ava(me,96)}</div><p><label for="fl" id="ph" style="color:var(--pr);cursor:pointer;font-weight:600">Сменить фото</label></p><input type="file" id="fl" accept="image/*" hidden><input class="t" id="nm" value="${esc(me.name)}" placeholder="Имя"><textarea class="t" id="bi" rows="4" maxlength="200" placeholder="Описание профиля">${esc(me.bio||'')}</textarea><button class="pr" id="sv">Сохранить</button></div>`);
