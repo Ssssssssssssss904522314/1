@@ -105,7 +105,7 @@ async function userAuth(req){
   const u=await getDoc('users',uid);
   return u&&u.passHash&&proof===u.passHash?{id:uid,...u}:null;
 }
-function publicUser(u){if(!u)return null;const x={...u};delete x.passHash;delete x.salt;return x}
+function publicUser(u){if(!u)return null;const x={...u};delete x.passHash;delete x.salt;x.tester=!!(u.tester||u.testerBadge);return x}
 async function canWriteDoc(req,c,id,body){
   if(isAdmin(req))return true;
   const u=await userAuth(req);
