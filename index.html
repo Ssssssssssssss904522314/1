@@ -39,7 +39,7 @@ body{background:radial-gradient(900px 500px at 0% -10%,rgba(123,108,255,.20),tra
 #app{background:var(--bg2);position:relative}
 @media(min-width:560px){#app{height:calc(100% - 32px);margin:16px auto;border-radius:32px;box-shadow:var(--sh);overflow:hidden}}
 .top{position:sticky;top:0;z-index:5;border:0;padding:14px 16px;background:var(--bg2);background:color-mix(in srgb,var(--bg2) 80%,transparent);backdrop-filter:saturate(180%) blur(16px);-webkit-backdrop-filter:saturate(180%) blur(16px)}
-.top h1{font-size:20px;font-weight:800;letter-spacing:-.3px}
+.top h1{font-size:20px;font-weight:800;letter-spacing:-.3px}.top .home-search{flex:1;min-width:0;display:flex;align-items:center;gap:8px;background:var(--card);border:1px solid var(--th);border-radius:18px;padding:0 13px;height:42px;box-shadow:0 1px 2px rgba(20,30,60,.05)}.top .home-search span{font-size:18px;color:var(--mut)}.top .home-search input{width:100%;border:0;outline:0;background:transparent;color:var(--tx);min-width:0}.top .home-search input::placeholder{color:var(--mut)}
 .ib{background:var(--card);border:1px solid var(--th);border-radius:14px;padding:9px 13px;cursor:pointer;transition:transform .15s,background .2s,box-shadow .2s;box-shadow:0 1px 2px rgba(20,30,60,.06)}
 .ib:active,.pr:active{transform:scale(.95)}
 .pr{background:linear-gradient(135deg,#5b7cff,#7b5cff);border-radius:16px;padding:12px 18px;box-shadow:0 8px 20px rgba(91,108,255,.35);transition:transform .15s,box-shadow .2s;font-weight:700}
@@ -158,12 +158,22 @@ const cid=(a,b)=>[a,b].sort().join('_');
 function clean(){unsub.forEach(f=>f());unsub=[];app.style.removeProperty('--me')}
 // ---- home ----
 function home(){clean();
- app.innerHTML=`<div class="top"><h1>EKOOOL</h1><button class="ib" id="ad">＋</button></div><div class="body" id="ls">${pinAll([])}<p class="c" style="color:var(--mut)">Чатов пока нет. Нажмите ＋ и введите @username собеседника.</p></div>${nav('chats')}`;
- bindNav();$('#ad').onclick=addChat;
- const seen={};let myG=[];const draw=async()=>{const arr=Object.values(seen).sort((a,b)=>b.ts-a.ts);if(!arr.length&&!myG.length)return;
+ app.innerHTML=`<div class="top"><div class="home-search"><span>⌕</span><input id="hs" placeholder="Поиск" autocomplete="off"></div></div><div class="body" id="ls">${pinAll([])}<p class="c" style="color:var(--mut)">Чатов пока нет. Найдите пользователя через поиск выше.</p></div>${nav('chats')}`;
+ bindNav();
+ const seen={};let myG=[];let allUsers=[];let searchTimer=0;
+ const draw=async()=>{const arr=Object.values(seen).sort((a,b)=>b.ts-a.ts);
   const rows=await Promise.all(arr.map(async m=>{if(m.anon)return`<div class="row" data-id="anon"><div class="av">🎁</div><div><div class="n">Анонимные подарки</div><div class="s">🎭 Подарок от неизвестного</div></div></div>`;const o=m.a===me.id?m.b:m.a,u=await getUser(o)||{name:o};
    return`<div class="row" data-id="${esc(o)}">${ava(u)}<div><div class="n">${nameV(u)}</div><div class="s">${m.type==='gift'?'🎁 Подарок':m.type==='img'?'📷 Фото':m.type==='voice'?'🎤 Голосовое':esc((m.text||'').slice(0,40))}</div></div></div>`}));
+  const q=($('#hs')?.value||'').trim().toLowerCase();
+  if(q){
+    if(!allUsers.length){try{const ur=await db.collection('users').get();allUsers=(Array.isArray(ur?.docs)?ur.docs:[]).map(d=>({id:d.id,...d.data()}))}catch(e){allUsers=[]}}
+    const results=allUsers.filter(u=>u.id!==me.id&&((u.name||'')+' '+(u.username||'')+' '+(u.extra||[]).join(' ')).toLowerCase().includes(q)).slice(0,30);
+    $('#ls').innerHTML='<div class="note" style="padding:8px 4px">Результаты поиска</div>'+(results.map(u=>`<div class="row" data-id="${esc(u.id)}">${ava(u)}<div><div class="n">${nameV(u)}</div><div class="s">${esc(handle(u))}</div></div></div>`).join('')||'<p class="c note">Ничего не найдено</p>');bindRows();return;
+  }
+  if(!arr.length&&!myG.length){$('#ls').innerHTML=pinAll([])+'<p class="c" style="color:var(--mut)">Чатов пока нет. Найдите пользователя через поиск выше.</p>';return}
   $('#ls').innerHTML=pinAll(arr)+myG.map(g=>`<div class="row" data-g="${g.id}">${ava(g)}<div><div class="n">${nameG(g)}</div><div class="s">${g.channel?'📢 Канал':'Группа'} · ${esc((g.bio||'').slice(0,40))}</div></div></div>`).join('')+rows.join('');bindRows()};
+ const doSearch=()=>{clearTimeout(searchTimer);searchTimer=setTimeout(()=>draw(),180)};
+ $('#hs').oninput=doSearch;
  unsub.push(db.collection('gm').where('uid','==',me.id).onSnapshot(async s=>{const gs=await Promise.all((Array.isArray(s?.docs)?s.docs:[]).map(async d=>{const g=await db.doc('groups/'+d.data().gid).get();return g.exists?{id:g.id,...g.data()}:null}));myG=gs.filter(Boolean);draw()}));
  for(const f of['a','b'])unsub.push(db.collection('msgs').where(f,'==',me.id).onSnapshot(s=>{s.docs.forEach(d=>{const m=d.data();if(m.anon&&m.a===me.id)return;const k=m.anon?'anon':cid(m.a,m.b);if(!seen[k]||seen[k].ts<m.ts)seen[k]=m});draw()}))}
 function addChat(){clean();
