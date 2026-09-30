@@ -118,7 +118,10 @@ function apiDb(){
  const q=(c,f=[])=>({where:(k,o,v)=>q(c,[...f,[k,o,v]]),get:async()=>{const params=new URLSearchParams();for(const [k,o,v] of f){params.append('where',k);params.append('op',o);params.append('value',typeof v==='string'?v:JSON.stringify(v))}const r=await fetch(base+'/api/collection/'+encodeURIComponent(c)+(params.toString()?'?'+params:''),{headers:auth()});const x=await j(r);const d=(x.docs||[]).map(a=>snap(a.id,a.data));return{docs:d,empty:!d.length}},onSnapshot(cb,er){let last='';let stopped=false;const tick=async()=>{if(stopped)return;try{const r=await this.get(),j=JSON.stringify(r.docs.map(d=>[d.id,d.data()]));if(j!==last){last=j;cb(r)}}catch(e){if(er)er(e)}};tick();const t=setInterval(tick,1200);return()=>{stopped=true;clearInterval(t)}}});
  return{doc,collection:c=>q(c)}}
 async function adminLogin(){const p=prompt('Пароль администратора EKOOOL:');if(!p)return false;try{const r=await fetch('/api/admin/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:p})}),x=await r.json();if(!r.ok||!x.token){toast(x.error||'Неверный пароль');return false}localStorage.EKOOOL_ADMIN_TOKEN=x.token;isAdmin=true;return true}catch(e){toast('Не удалось подключиться к серверу');return false}}
-async function init(){db=apiDb();isAdmin=false;app.innerHTML='<div class="body c" style="padding-top:22vh"><div style="font-size:48px">💬</div><h2>EKOOOL</h2><p class="note">Загрузка мессенджера…</p></div>';
+async function init(){db=apiDb();isAdmin=false;
+ app.innerHTML='<div class="body c" style="padding-top:12vh"><h1 style="font-size:34px;margin:0;color:var(--pr)">EKOOOL</h1><p style="color:var(--mut)">Мессенджер</p><div class="note">Подключение к серверу…</div></div>';
+ // Если сервер временно не отвечает, всё равно показываем экран входа.
+ setTimeout(()=>{if(!me&&document.querySelector('#app .note'))auth()},6500);
  if(location.hash==='#admin'){
    try{const t=localStorage.EKOOOL_ADMIN_TOKEN;if(t){const r=await fetch('/api/admin/check',{headers:{Authorization:'Bearer '+t}});if(r.ok){isAdmin=true;return admin()}}}catch(e){}
    if(await adminLogin())return admin();
