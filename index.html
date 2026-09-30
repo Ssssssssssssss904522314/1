@@ -227,7 +227,7 @@ function addChat(){clean();
 async function chat(oid){clean();delete cache[oid];await loadGifts();let o=await getUser(oid);if(!o){try{o=await findUser(oid,true)}catch(e){}}o=o||{id:oid,name:(String(oid).startsWith('EK-')?'Пользователь':oid),username:''};if(!o.name)o.name=o.username?'@'+o.username:'Пользователь';if(!o.photo)o.photo='';cache[oid]=o;const k=cid(me.id,oid);
  app.innerHTML=`<div class="top"><button class="ib" id="bk">←</button>${ava(o,36)}<div id="hd" style="flex:1;cursor:pointer;min-width:0"><h1 style="font-size:16px">${nameV(o)}</h1><div id="st" style="font-size:12px;color:var(--mut)">${seenTxt(o)}</div></div><button class="ib" id="sc" title="Секретный чат">${getSecretRaw(oid)?'🔒':'🔓'}</button><button class="ib" id="dc">🗑</button></div><div class="body">${o.scam?'<div class="warn">⚠️ Пользователь отмечен как СКАМ. Не переводите деньги и не сообщайте данные.</div>':''}${o.fake?'<div class="warn">🎭 Аккаунт отмечен как ФЕЙК.</div>':''}<div class="msgs" id="ms"></div></div>
  <div id="gp" style="display:none;padding:10px;border-top:1px solid var(--th);max-height:42vh;overflow:auto"></div>
- <div class="bar"><label class="ib" id="im" for="fl">📷</label><button class="ib" id="gf">🎁</button><input id="tx" placeholder="Сообщение"><button class="ib" id="mic">🎤</button><button class="pr" id="sd">➤</button></div><input type="file" id="fl" accept="image/*" hidden>`;
+ <div class="bar"><label class="ib" id="im" for="fl">📎</label><button class="ib" id="gf">🎁</button><input id="tx" placeholder="Сообщение"><button class="ib" id="mic">🎤</button><button class="pr" id="sd">➤</button></div><input type="file" id="fl" accept="image/*,video/*,audio/*,.pdf,.txt,.zip,.doc,.docx" hidden>`;
  let secretMode=!!getSecretRaw(oid);
  $('#bk').onclick=home;$('#hd').onclick=()=>viewUser(oid);
  $('#sc').onclick=async()=>{if(!getSecretRaw(oid))return secretModal(oid,v=>{secretMode=!!v;$('#sc').textContent=secretMode?'🔒':'🔓';renderMessages()});secretMode=!secretMode;$('#sc').textContent=secretMode?'🔒':'🔓';renderMessages()};
@@ -251,7 +251,7 @@ async function chat(oid){clean();delete cache[oid];await loadGifts();let o=await
  $('#tx').onkeydown=e=>{if(e.key==='Enter')$('#sd').click()};
 
  $('#gf').onclick=()=>giftPanel($('#gp'),oid);
- $('#fl').onchange=async e=>{const f=e.target.files[0];e.target.value='';if(!f)return;const d=await shrink(f,900,.72);d?send({type:'img',data:d}):toast('Не удалось прочитать изображение')};
+ $('#fl').onchange=async e=>{const f=e.target.files[0];e.target.value='';if(!f)return;if(f.size>5*1024*1024)return alert('Файл слишком большой. Максимум 5 МБ');if(f.type.startsWith('image/')){const d=await shrink(f,900,.72);d?send({type:'img',data:d}):toast('Не удалось прочитать изображение')}else{const rd=new FileReader();rd.onload=()=>send({type:'file',data:rd.result,name:f.name,mime:f.type||'application/octet-stream',size:f.size});rd.readAsDataURL(f)}};
  let rec,chunks=[];$('#mic').onclick=async()=>{const b=$('#mic');
   if(rec&&rec.state==='recording'){rec.stop();return}
   try{const st=await navigator.mediaDevices.getUserMedia({audio:true});rec=new MediaRecorder(st);chunks=[];
@@ -270,7 +270,7 @@ async function chat(oid){clean();delete cache[oid];await loadGifts();let o=await
      if(m.secret)body=raw?esc(await secretDecrypt(raw,m)):'🔒 Секретное сообщение — введите ключ через 🔒';
      else if(m.type==='gift')body=gh(m);
      else if(m.type==='img')body=`<img src="${m.data}">`;
-     else if(m.type==='voice')body=`<audio controls src="${m.data}"></audio>`;
+     else if(m.type==='voice')body=`<audio controls src="${m.data}"></audio>`;else if(m.type==='file')body=`<a href="${m.data}" download="${esc(m.name||'file')}" style="color:inherit;font-weight:700;text-decoration:none">📎 ${esc(m.name||'Файл')}<small>${Math.round((m.size||0)/1024)} КБ</small></a>`;
      else body=m.deleted?'<i>Сообщение удалено</i>':esc(m.text||'');
      const reactions=m.reactions?Object.values(m.reactions).filter(Boolean):[];
      const rhtml=reactions.length?'<div style="font-size:12px;margin-top:3px">'+reactions.map(x=>esc(x)).join(' ')+'</div>':'';
