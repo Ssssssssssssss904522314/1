@@ -381,10 +381,18 @@ function svgWeatherCard(w){
   return 'data:image/svg+xml;charset=utf-8,'+encodeURIComponent(svg);
 }
 async function weatherData(city){
-  const g=await fetch('https://geocoding-api.open-meteo.com/v1/search?name='+encodeURIComponent(city)+'&count=1&language=ru&format=json');
-  const gj=await g.json();
-  const place=gj?.results?.[0];
-  if(!place)throw new Error('Город не найден');
+  const raw=String(city||'').trim();
+  const variants=[raw,raw.replace(/^(погода|прогноз|температура)\\s+(в|для)\\s+/i,'').trim()];
+  if(!/[,,]/.test(raw)&&/^[А-Яа-яЁё\\s-]+$/.test(raw))variants.push(raw+', Россия');
+  const all=[];
+  for(const q of [...new Set(variants)].filter(Boolean)){
+    try{
+      const g=await fetch('https://geocoding-api.open-meteo.com/v1/search?name='+encodeURIComponent(q)+'&count=10&language=ru&format=json&countryCode=RU');
+      const gj=await g.json();for(const x of (gj?.results||[]))all.push(x);
+    }catch(e){}
+  }
+  const place=all.find(x=>['city','town','village'].includes(String(x.feature_code||'').toLowerCase().replace(/^ppl[cr]?$/,'')))||all.find(x=>x.country_code==='RU')||all[0];
+  if(!place)throw new Error('Город не найден. Попробуйте: «погода в Лабинске, Краснодарский край»');
   const u='https://api.open-meteo.com/v1/forecast?latitude='+encodeURIComponent(place.latitude)+'&longitude='+encodeURIComponent(place.longitude)+'&current=temperature_2m,apparent_temperature,weather_code,wind_speed_10m&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max&forecast_days=5&timezone=auto';
   const r=await fetch(u),x=await r.json();
   if(!r.ok||x.error)throw new Error(x.reason||'Сервис погоды недоступен');
