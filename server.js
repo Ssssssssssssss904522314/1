@@ -331,6 +331,73 @@ app.post('/api/admin/login',(req,res)=>{
 app.get('/api/admin/check',(req,res)=>isAdmin(req)?res.json({ok:true}):res.status(401).json({error:'Unauthorized'}));
 app.patch('/api/admin/user-label/:id',async(req,res)=>{try{if(!isAdmin(req))return res.status(401).json({error:'Unauthorized'});const key=String(req.body?.key||'');if(!/^(verified|supportAgent|owner|ceo|red|tester|unknown|scam|fake|restricted|banned)$/.test(key))return res.status(400).json({error:'Invalid label'});const value=!!req.body?.value;await patchDoc('users',req.params.id,{[key]:value});res.json({ok:true,key,value})}catch(e){res.status(500).json({error:e.message})}});
 
+
+const ECOTON_RATE=500;
+function storePublicUser(u){
+  return {id:u?.id||'',username:u?.username||'',name:u?.name||'',coins:Number(u?.coins||0),ecoton:Number(u?.ecoton||0),premium:!!(u?.premiumForever||u?.premiumUntil>Date.now())};
+}
+async function storeUser(req){return await userAuth(req)}
+app.get('/api/store/me',async(req,res)=>{
+  try{
+    const u=await storeUser(req);
+    if(!u)return res.status(401).json({error:'Войдите в EKOOOL'});
+    res.json({ok:true,user:storePublicUser(u)});
+  }catch(e){res.status(500).json({error:e.message})}
+});
+app.get('/api/store/products',async(req,res)=>{
+  try{
+    const docs=await getCollection('store_products');
+    const products=docs.map(x=>({id:x.id,...x.data})).filter(x=>x.active!==false&&Number(x.price)>0&&(!x.stock||Number(x.stock)>0));
+    res.json({ok:true,products});
+  }catch(e){res.status(500).json({error:e.message})}
+});
+app.post('/api/store/exchange',async(req,res)=>{
+  try{
+    const u=await storeUser(req);
+    if(!u)return res.status(401).json({error:'Войдите в EKOOOL'});
+    const coins=Math.floor(Number(req.body?.coins));
+    if(!Number.isFinite(coins)||coins<ECOTON_RATE||coins%ECOTON_RATE!==0)return res.status(400).json({error:'Обмен только кратно 500 ЭКОкоинов'});
+    const add=coins/ECOTON_RATE;
+    const current=Number(u.coins||0);
+    if(current<coins)return res.status(400).json({error:'Недостаточно ЭКОкоинов'});
+    await patchDoc('users',u.id,{coins:current-coins,ecoton:Number(u.ecoton||0)+add});
+    await putDoc('ecoton_txs','ex_'+Date.now()+'_'+crypto.randomBytes(3).toString('hex'),{uid:u.id,coins:-coins,ecoton:add,type:'exchange',ts:Date.now(),rate:ECOTON_RATE});
+    res.json({ok:true,user:storePublicUser({...u,coins:current-coins,ecoton:Number(u.ecoton||0)+add}),message:'Обмен выполнен'});
+  }catch(e){res.status(500).json({error:e.message})}
+});
+app.post('/api/store/admin/product',async(req,res)=>{
+  try{
+    if(!isAdmin(req))return res.status(401).json({error:'Только администратор'});
+    const name=String(req.body?.name||'').trim().slice(0,100);
+    const type=String(req.body?.type||'other').trim().slice(0,30);
+    const price=Math.floor(Number(req.body?.price));
+    const stock=Math.max(0,Math.floor(Number(req.body?.stock??1)));
+    if(!name||!Number.isFinite(price)||price<1)return res.status(400).json({error:'Неверные данные товара'});
+    const id='prod_'+Date.now()+'_'+crypto.randomBytes(3).toString('hex');
+    await putDoc('store_products',id,{name,type,price,stock,active:true,createdAt:Date.now()});
+    res.json({ok:true,id});
+  }catch(e){res.status(500).json({error:e.message})}
+});
+app.post('/api/store/buy',async(req,res)=>{
+  try{
+    const u=await storeUser(req);
+    if(!u)return res.status(401).json({error:'Войдите в EKOOOL'});
+    const productId=String(req.body?.productId||'').trim();
+    const p=await getDoc('store_products',productId);
+    if(!p||p.active===false)return res.status(404).json({error:'Товар не найден'});
+    const price=Math.floor(Number(p.price));
+    if(!Number.isFinite(price)||price<1)return res.status(400).json({error:'Неверная цена товара'});
+    if(Number(p.stock||0)<=0)return res.status(409).json({error:'Товар закончился'});
+    if(Number(u.ecoton||0)<price)return res.status(400).json({error:'Недостаточно ECOTon'});
+    const orderId='order_'+Date.now()+'_'+crypto.randomBytes(4).toString('hex');
+    await patchDoc('users',u.id,{ecoton:Number(u.ecoton||0)-price});
+    await patchDoc('store_products',productId,{stock:Number(p.stock)-1});
+    await putDoc('store_orders',orderId,{uid:u.id,productId,productName:p.name,type:p.type,price,status:'paid',createdAt:Date.now()});
+    await putDoc('ecoton_txs','buy_'+Date.now()+'_'+crypto.randomBytes(3).toString('hex'),{uid:u.id,ecoton:-price,type:'purchase',orderId,productId,ts:Date.now()});
+    res.json({ok:true,orderId,remaining:Number(u.ecoton||0)-price,message:'Покупка оформлена. Заказ #'+orderId});
+  }catch(e){res.status(500).json({error:e.message})}
+});
+
 app.get('/api/doc/:collection/:id',async(req,res)=>{
   try{
     const c=req.params.collection,id=req.params.id;let data=await getDoc(c,id);
