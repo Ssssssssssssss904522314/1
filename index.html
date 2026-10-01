@@ -205,10 +205,34 @@ async function secretModal(oid,onDone){
 }
 
 function clean(){unsub.forEach(f=>f());unsub=[];app.style.removeProperty('--me')}
+function acctButton(){
+ const u=me||{};
+ return '<button class="ib" id="acctBtn" title="Аккаунты" style="padding:5px 7px;border-radius:14px;display:flex;align-items:center;gap:7px">'+ava(u,32)+'<span style="font-weight:700;max-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(u.name||u.username||'Аккаунт')+'</span><span style="font-size:11px;opacity:.65">⌄</span></button>';
+}
+async function accountSwitcher(){
+ const ids=[me.id,...accs().filter(x=>x!==me.id)].slice(0,6);
+ const users=await Promise.all(ids.map(async id=>{const u=await getUser(id);return u?{id,...u}:null}));
+ const d=document.createElement('div');
+ d.style.cssText='position:fixed;inset:0;background:#0008;display:flex;align-items:flex-start;justify-content:center;padding:64px 14px 14px;z-index:250';
+ d.innerHTML='<div style="width:min(94vw,390px);max-height:78vh;overflow:auto;background:var(--card);color:var(--tx);border:1px solid var(--th);border-radius:22px;box-shadow:var(--sh);padding:12px">'+
+   '<div style="display:flex;align-items:center;justify-content:space-between;padding:7px 6px 12px"><b style="font-size:18px">Аккаунты EKOOOL</b><button class="ib" id="acClose">✕</button></div>'+
+   '<div style="display:grid;gap:6px">'+users.filter(Boolean).map(u=>'<button class="ib acRow" data-ac="'+esc(u.id)+'" style="display:flex;align-items:center;gap:11px;text-align:left;padding:11px 10px;border-radius:15px;background:'+(u.id===me.id?'var(--pr)':'var(--th)')+';color:'+(u.id===me.id?'#fff':'var(--tx)')+'">'+ava(u,42)+'<span style="min-width:0;flex:1"><b style="display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(u.name||u.username||u.id)+'</b><span style="font-size:12px;opacity:.75">'+esc(handle(u))+'</span></span><span style="font-weight:800;opacity:.9">'+Number(u.coins||0)+'</span>'+(u.id===me.id?'<span>✓</span>':'')+'</button>').join('')+
+   '<button class="ib" id="acAdd" style="padding:12px;text-align:left;border-radius:15px">＋ Добавить аккаунт</button></div></div>';
+ document.body.appendChild(d);
+ d.querySelector('#acClose').onclick=()=>d.remove();
+ d.onclick=e=>{if(e.target===d)d.remove()};
+ d.querySelector('#acAdd').onclick=()=>{d.remove();auth('in',true)};
+ d.querySelectorAll('.acRow').forEach(b=>b.onclick=async()=>{
+   const id=b.dataset.ac;if(id===me.id)return d.remove();
+   const s=await db.doc('users/'+id).get();if(!s.exists)return toast('Аккаунт не найден');
+   me={id,...s.data()};try{localStorage.ekid=me.id;localStorage.ekproof=JSON.stringify({id:me.id,passHash:me.passHash})}catch(e){}
+   cache={};d.remove();const bb=bad(me);bb?blocked(bb):start();
+ });
+}
 // ---- home ----
 function home(){clean();
- app.innerHTML=`<div class="top"><div class="home-search"><span>⌕</span><input id="hs" placeholder="Поиск" autocomplete="off"></div></div><div class="body" id="ls">${pinAll([])}<p class="c" style="color:var(--mut)">Чатов пока нет. Найдите пользователя через поиск выше.</p></div>${nav('chats')}`;
- bindNav();
+ app.innerHTML=`<div class="top">'+acctButton()+'<div class="home-search" style="flex:1"><span>⌕</span><input id="hs" placeholder="Поиск" autocomplete="off"></div></div><div class="body" id="ls">${pinAll([])}<p class="c" style="color:var(--mut)">Чатов пока нет. Найдите пользователя через поиск выше.</p></div>${nav('chats')}`;
+ bindNav();document.querySelector("#acctBtn").onclick=accountSwitcher;
  const seen={};let myG=[];let allUsers=[];let searchTimer=0;
  const draw=async()=>{const arr=Object.values(seen).sort((a,b)=>b.ts-a.ts);
   const rows=await Promise.all(arr.map(async m=>{if(m.anon)return`<div class="row" data-id="anon"><div class="av">🎁</div><div><div class="n">Анонимные подарки</div><div class="s">🎭 Подарок от неизвестного</div></div></div>`;const o=m.a===me.id?m.b:m.a,u=await getUser(o)||{name:o};
@@ -519,15 +543,15 @@ async function delAcc(id){const us=await db.doc('users/'+id).get();if(us.exists)
  for(const f of['a','b']){const r=await db.collection('msgs').where(f,'==',id).get();for(const d of r.docs)await db.doc('msgs/'+d.id).delete()}
  const t=await db.collection('txs').where('uid','==',id).get();for(const d of t.docs)await db.doc('txs/'+d.id).delete();await db.doc('users/'+id).delete();cache={}}
 async function profile(){clean();await fresh();
- app.innerHTML=`<div class="top"><h1>Профиль</h1></div><div class="body">${card(me)}<div id="qr"></div><div class="note c">Так вас видят другие пользователи. QR-код содержит ваш юзернейм.</div></div>${nav('profile')}`;
- bindNav();showGifts(me.id);try{new QRCode($('#qr'),{text:handle(me),width:160,height:160})}catch(e){}}
+ app.innerHTML=`<div class="top">'+acctButton()+'<h1>Профиль</h1></div><div class="body">${card(me)}<div id="qr"></div><div class="note c">Так вас видят другие пользователи. QR-код содержит ваш юзернейм.</div></div>${nav('profile')}`;
+ bindNav();document.querySelector("#acctBtn").onclick=accountSwitcher;showGifts(me.id);try{new QRCode($('#qr'),{text:handle(me),width:160,height:160})}catch(e){}}
 async function viewUser(id){if(id===BOT.id)return sub('Профиль',()=>chat(id),card(BOT));cache={};const u=await getUser(id)||{id,name:id};sub('Профиль',()=>chat(id),card(u)+`<div class="c"><button class="pr" id="gb">🎁 Подарить подарок</button>${id===AIBOT.id?' <button class="ib" id="pb">★ Подарить Premium</button>':''} <button class="ib" id="wr">Написать</button><div id="gp" style="display:none;padding:10px;margin-top:10px;max-height:42vh;overflow:auto"></div></div>`);
  showGifts(id);$('#gb').onclick=()=>giftPanel($('#gp'),id,()=>{alert('Подарок отправлен 🎁');showGifts(id)});$('#wr').onclick=()=>chat(id);if(id===AIBOT.id)$('#pb').onclick=botPremium}
 async function settings(){clean();await fresh();
  const others=await Promise.all(accs().filter(x=>x!==me.id).map(async id=>{const u=await getUser(id);return u?`<button class="ib" data-sw="${id}" style="width:100%;text-align:left;margin-bottom:8px;padding:13px">🔁 Переключиться: ${esc(u.name)} ${esc(handle(u))}</button>`:''}));
  const B=(i,t)=>`<button class="ib" id="${i}" style="width:100%;text-align:left;margin-bottom:8px;padding:13px">${t}</button>`;
- app.innerHTML=`<div class="top"><h1>Настройки</h1></div><div class="body"><p style="font-size:17px">💰 <b>${me.coins||0}</b> ЕКОКоинов</p>${isPrem(me)?`<p class="note">👑 AmBler Premium до ${new Date(me.premiumUntil).toLocaleDateString()}</p>`:''}${B('s8','👑 AmBler Premium')}${B('s13','🎨 Оформление')}${B('s9','🎨 Оформление чатов')}${B('s14','🔔 Уведомления')}${B('s15','🟢 Статус')}${B('s16','🛍 Магазин')}${B('s10','🔴 Заявка на красную галочку')}${B('s11','📞 Анонимный номер')}${B('s12','➕ Добавить аккаунт')}${others.join('')}${B('s1','✏️ Редактировать профиль')}${B('s2','🎁 Подарить коины')}${B('s3','📜 История коинов')}${B('s4','🔤 Юзернеймы')}${B('s5','🗑 Удалить аккаунт')}${canAdmin()?B('s6','🛠 Админ-панель'):''}${B('s7','Выйти')}</div>${nav('settings')}`;
- bindNav();$('#s12').onclick=()=>auth('in',true);document.querySelectorAll('[data-sw]').forEach(b=>b.onclick=async()=>{const sn=await db.doc('users/'+b.dataset.sw).get();if(!sn.exists)return toast('Аккаунт не найден');me={id:b.dataset.sw,...sn.data()};try{localStorage.ekid=me.id;localStorage.ekproof=JSON.stringify({id:me.id,passHash:me.passHash})}catch(e){}cache={};const bb=bad(me);bb?blocked(bb):start()});
+ app.innerHTML=`<div class="top">'+acctButton()+'<h1>Настройки</h1></div><div class="body"><p style="font-size:17px">💰 <b>${me.coins||0}</b> ЕКОКоинов</p>${isPrem(me)?`<p class="note">👑 AmBler Premium до ${new Date(me.premiumUntil).toLocaleDateString()}</p>`:''}${B('s8','👑 AmBler Premium')}${B('s13','🎨 Оформление')}${B('s9','🎨 Оформление чатов')}${B('s14','🔔 Уведомления')}${B('s15','🟢 Статус')}${B('s16','🛍 Магазин')}${B('s10','🔴 Заявка на красную галочку')}${B('s11','📞 Анонимный номер')}${B('s12','➕ Добавить аккаунт')}${others.join('')}${B('s1','✏️ Редактировать профиль')}${B('s2','🎁 Подарить коины')}${B('s3','📜 История коинов')}${B('s4','🔤 Юзернеймы')}${B('s5','🗑 Удалить аккаунт')}${canAdmin()?B('s6','🛠 Админ-панель'):''}${B('s7','Выйти')}</div>${nav('settings')}`;
+ bindNav();document.querySelector("#acctBtn").onclick=accountSwitcher;$('#s12').onclick=()=>auth('in',true);document.querySelectorAll('[data-sw]').forEach(b=>b.onclick=async()=>{const sn=await db.doc('users/'+b.dataset.sw).get();if(!sn.exists)return toast('Аккаунт не найден');me={id:b.dataset.sw,...sn.data()};try{localStorage.ekid=me.id;localStorage.ekproof=JSON.stringify({id:me.id,passHash:me.passHash})}catch(e){}cache={};const bb=bad(me);bb?blocked(bb):start()});
  $('#s11').onclick=numScreen;$('#s10').onclick=async()=>{if(me.red)return alert('У вас уже есть красная галочка 🔴');if(me.redReq)return alert('Заявка уже отправлена. Ожидайте решения администратора.');if(!await askConfirm('Подать заявку на красную галочку? Она подтверждает, что аккаунт принадлежит человеку, а не боту.'))return;await db.doc('users/'+me.id).update({redReq:true});me.redReq=true;alert('Заявка отправлена ✔')};$('#s8').onclick=premium;$('#s13').onclick=appTheme;$('#s9').onclick=chatTheme;$('#s14').onclick=async()=>{if(!('Notification' in window))return alert('Уведомления не поддерживаются');const p=await Notification.requestPermission();alert(p==='granted'?'Уведомления включены ✓':'Уведомления не разрешены')};$('#s15').onclick=async()=>{const v=prompt('Статус: online / away / dnd / invisible',me.status||'online');if(!v||!['online','away','dnd','invisible'].includes(v))return alert('Неизвестный статус');await db.doc('users/'+me.id).update({status:v,statusTs:Date.now()});me.status=v;alert('Статус сохранён ✓');settings()};$('#s16').onclick=()=>appTheme;$('#s1').onclick=editProfile;$('#s2').onclick=giftCoins;$('#s3').onclick=coinHistory;$('#s4').onclick=unScreen;
  $('#s5').onclick=async()=>{if(!await askConfirm('Удалить аккаунт навсегда вместе с сообщениями?'))return;await delAcc(me.id);try{delete localStorage.ekid}catch(e){}me=null;auth()};
  if(canAdmin())$('#s6').onclick=admin;$('#s7').onclick=()=>{const id0=me.id;try{delete localStorage.ekid;delete localStorage.ekproof;localStorage.ekaccs=JSON.stringify(accs().filter(x=>x!==id0))}catch(e){}me=null;auth()}}
