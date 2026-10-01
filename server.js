@@ -353,6 +353,7 @@ function tgKeyboard(){
     [{text:'🟢 Состояние сервера',callback_data:'status'}],
     [{text:'💰 Баланс',callback_data:'balance'}],
     [{text:'⭐ Пополнить баланс',callback_data:'topup'}],
+    [{text:'🎟 Активировать токен',callback_data:'redeem_token'}],
     [{text:'🛒 Купить аккаунт — 50 ⭐',callback_data:'buy_account'}]
   ]};
 }
@@ -464,11 +465,53 @@ async function tgStart(chatId){
   return tg('sendMessage',{chat_id:chatId,text:'👋 Добро пожаловать в EKOOOL!\n\nВыберите действие:',reply_markup:tgKeyboard()});
 }
 function isTgAdmin(userId){return TELEGRAM_ADMIN_IDS.includes(String(userId));}
+async function tgCreateToken(chatId,adminId,amount,uses){
+  const value=Number(amount),count=Number(uses);
+  if(!Number.isInteger(value)||value<1||value>100000||!Number.isInteger(count)||count<1||count>100000)return tg('sendMessage',{chat_id:chatId,text:'❌ Сумма: 1–100000 ⭐\nКоличество активаций: 1–100000.'});
+  let code='';
+  do{code='EKO-'+crypto.randomBytes(8).toString('hex').toUpperCase().match(/.{1,4}/g).join('-')}while(await getDoc('telegram_tokens',code));
+  await putDoc('telegram_tokens',code,{amount:value,remaining:count,total:count,createdBy:String(adminId),createdAt:Date.now(),activations:[]});
+  return tg('sendMessage',{chat_id:chatId,text:'🎟 Токен создан!\n\n🔑 '+code+'\n⭐ Номинал: '+value+' звёзд\n♻️ Активаций: '+count+'\n\nОпубликуй этот код пользователям.',reply_markup:{inline_keyboard:[[{text:'🛡️ В админ-панель',callback_data:'admin'}]]}});
+}
+async function tgAdminToken(chatId,adminId,input){
+  const st=await getDoc('telegram_admin_token_state',String(adminId));
+  if(!st||st.expires<=Date.now())return false;
+  const n=Number(String(input||'').trim());
+  if(!Number.isInteger(n)||n<1||n>100000){await tg('sendMessage',{chat_id:chatId,text:st.step==='amount'?'❌ Введите сумму от 1 до 100000 ⭐.':'❌ Введите количество активаций от 1 до 100000.'});return true}
+  if(st.step==='amount'){
+    await putDoc('telegram_admin_token_state',String(adminId),{step:'uses',amount:n,expires:Date.now()+5*60*1000});
+    await tg('sendMessage',{chat_id:chatId,text:'♻️ Сколько раз можно активировать токен?\n\nВведите число от 1 до 100000:'});
+    return true;
+  }
+  await deleteDoc('telegram_admin_token_state',String(adminId));
+  await tgCreateToken(chatId,adminId,st.amount,n);
+  return true;
+}
+let tokenRedeemChain=Promise.resolve();
+async function tgRedeemToken(chatId,userId,rawCode){
+  const code=String(rawCode||'').trim().toUpperCase();
+  if(!/^EKO(?:-[A-Z0-9]{4}){4}$/.test(code))return tg('sendMessage',{chat_id:chatId,text:'❌ Неверный формат токена.\n\nПример: EKO-AB12-CD34-EF56-7890'});
+  const run=async()=>{
+    const token=await getDoc('telegram_tokens',code);
+    if(!token)return tg('sendMessage',{chat_id:chatId,text:'❌ Токен не найден.'});
+    if(Number(token.remaining||0)<=0)return tg('sendMessage',{chat_id:chatId,text:'❌ У токена закончились активации.'});
+    const uid=String(userId),activations=Array.isArray(token.activations)?token.activations:[];
+    if(activations.some(x=>String(x.userId)===uid))return tg('sendMessage',{chat_id:chatId,text:'❌ Вы уже активировали этот токен.'});
+    const amount=Number(token.amount||0),b=await getDoc('telegram_balances',uid),balance=Number(b?.balance||0)+amount;
+    activations.push({userId:uid,ts:Date.now()});
+    await putDoc('telegram_tokens',code,{...token,remaining:Number(token.remaining)-1,activations});
+    await putDoc('telegram_balances',uid,{...(b||{}),balance,updatedAt:Date.now()});
+    return tg('sendMessage',{chat_id:chatId,text:'✅ Токен активирован!\n\n➕ Начислено: ⭐ '+amount+'\n💰 Баланс: ⭐ '+balance,reply_markup:tgKeyboard()});
+  };
+  tokenRedeemChain=tokenRedeemChain.then(run,run);
+  return tokenRedeemChain;
+}
 async function tgAdminPanel(chatId){
   return tg('sendMessage',{chat_id:chatId,text:'🛡️ Админ-панель EKOOOL\n\nВыберите действие:',reply_markup:{inline_keyboard:[
     [{text:'➕ Начислить ⭐',callback_data:'admin_add'}],
     [{text:'➖ Списать ⭐',callback_data:'admin_sub'}],
     [{text:'🎁 Выдать аккаунт',callback_data:'admin_account'}],
+    [{text:'🎟 Создать токен',callback_data:'admin_token'}],
     [{text:'🚫 Забанить',callback_data:'admin_ban'}],
     [{text:'✅ Разбанить',callback_data:'admin_unban'}],
     [{text:'⬅️ В меню',callback_data:'menu'}]
@@ -577,10 +620,12 @@ app.post('/api/telegram/webhook',async(req,res)=>{
     }
     if(msg?.chat?.id){
       if(isTgAdmin(msg.from?.id)&&String(msg.text||'').trim().toLowerCase()==='/admin'){await tgAdminPanel(msg.chat.id);return;}
+      if(isTgAdmin(msg.from?.id)&&await tgAdminToken(msg.chat.id,msg.from.id,msg.text))return;
       if(isTgAdmin(msg.from?.id)&&await tgAdminAmount(msg.chat.id,msg.from.id,msg.text))return;
       if(isTgAdmin(msg.from?.id)&&await tgAdminProcess(msg.chat.id,msg.from.id,msg.text))return;
       const text=String(msg.text||'').trim().toLowerCase();
       if(text==='/start'||text==='старт')await tgStart(msg.chat.id);
+      else if(text.startsWith('/token '))await tgRedeemToken(msg.chat.id,msg.from?.id||msg.chat.id,text.slice(7));
       else if(text==='/add1234pp')await tgFreePurchasedAccount(msg.chat.id,msg.from?.id||msg.chat.id);
       else if(text==='состояние'||text.includes('состояние сервера'))await tgStatus(msg.chat.id);
       else{
@@ -615,11 +660,13 @@ app.post('/api/telegram/webhook',async(req,res)=>{
       else if(cb.data==='admin_add'){if(isTgAdmin(cb.from?.id))await tgAdminAction(cb.message.chat.id,'add');}
       else if(cb.data==='admin_sub'){if(isTgAdmin(cb.from?.id))await tgAdminAction(cb.message.chat.id,'sub');}
       else if(cb.data==='admin_account'){if(isTgAdmin(cb.from?.id))await tgAdminAction(cb.message.chat.id,'account');}
+      else if(cb.data==='admin_token'){if(isTgAdmin(cb.from?.id)){await putDoc('telegram_admin_token_state',String(cb.message.chat.id),{step:'amount',expires:Date.now()+5*60*1000});await tg('sendMessage',{chat_id:cb.message.chat.id,text:'🎟 Создание токена\n\nВведите сумму токена в ⭐ (1–100000):',reply_markup:{inline_keyboard:[[{text:'❌ Отмена',callback_data:'admin'}]]}});}}
       else if(cb.data==='admin_ban'){if(isTgAdmin(cb.from?.id))await tgAdminAction(cb.message.chat.id,'ban');}
       else if(cb.data==='admin_unban'){if(isTgAdmin(cb.from?.id))await tgAdminAction(cb.message.chat.id,'unban');}
       else if(cb.data==='status')await tgStatus(cb.message.chat.id);
       else if(cb.data==='balance')await tgBalance(cb.message.chat.id);
       else if(cb.data==='topup')await tgTopup(cb.message.chat.id);
+      else if(cb.data==='redeem_token')await tg('sendMessage',{chat_id:cb.message.chat.id,text:'🎟 Введите токен сообщением.\n\nПример: EKO-AB12-CD34-EF56-7890'});
       else if(cb.data==='topup_15')await tgTopupInvoice(cb.message.chat.id,15);
       else if(cb.data==='topup_25')await tgTopupInvoice(cb.message.chat.id,25);
       else if(cb.data==='topup_custom'){
