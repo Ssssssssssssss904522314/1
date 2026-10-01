@@ -411,3 +411,5 @@ initDb().then(()=>{
   console.error('EKOOOL database init failed:',e);
   process.exit(1);
 });
+
+// Render redeploy trigger
