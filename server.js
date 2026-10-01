@@ -487,8 +487,6 @@ app.post('/api/helpbot/message',async(req,res)=>{
     if(!au||au.id!==userId)return res.status(401).json({error:'Unauthorized'});
     if(!text)return res.status(400).json({error:'Нужен текст'});
     const out=await helpBotMessage(userId,text);
-    const mid='m'+Date.now()+Math.random().toString(36).slice(2,6);
-    await putDoc('msgs',mid,{chat:[HELPBOT_ID,userId].sort().join('_'),a:HELPBOT_ID,b:userId,ts:Date.now(),type:'text',text:out.text,bot:true});
     res.json({ok:true,...out});
   }catch(e){res.status(500).json({error:e.message||'Ошибка @HelpBot'})}
 });
