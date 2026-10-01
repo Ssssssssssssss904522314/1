@@ -119,6 +119,23 @@ function apiDb(){
      delete:async()=>{const r=await fx(base+'/api/doc/'+encodeURIComponent(c)+'/'+encodeURIComponent(i),{method:'DELETE',headers:auth()});await j(r)}}};
  const q=(c,f=[])=>({where:(k,o,v)=>q(c,[...f,[k,o,v]]),get:async()=>{const params=new URLSearchParams();for(const [k,o,v] of f){params.append('where',k);params.append('op',o);params.append('value',typeof v==='string'?v:JSON.stringify(v))}const r=await fx(base+'/api/collection/'+encodeURIComponent(c)+(params.toString()?'?'+params:''),{headers:auth()});const x=await j(r);const d=(x.docs||[]).map(a=>snap(a.id,a.data));return{docs:d,empty:!d.length}},onSnapshot(cb,er){let last='';let stopped=false;const tick=async()=>{if(stopped)return;try{const r=await this.get(),j=JSON.stringify(r.docs.map(d=>[d.id,d.data()]));if(j!==last){last=j;cb(r)}}catch(e){if(er)er(e)}};tick();const t=setInterval(tick,1200);return()=>{stopped=true;clearInterval(t)}}});
  return{doc,collection:c=>q(c)}}
+async function sessionLogin(uid,proof){
+ try{
+  const r=await fetch('/api/auth/session',{method:'POST',headers:{'Content-Type':'application/json'},credentials:'same-origin',body:JSON.stringify({uid,proof})});
+  return r.ok;
+ }catch(e){return false}
+}
+async function sessionCurrent(){
+ try{
+  const r=await fetch('/api/auth/session',{credentials:'same-origin'});
+  if(!r.ok)return null;
+  const x=await r.json();
+  return x.id||null;
+ }catch(e){return null}
+}
+async function sessionLogout(){
+ try{await fetch('/api/auth/logout',{method:'POST',credentials:'same-origin'})}catch(e){}
+}
 async function adminLogin(){const p=prompt('Пароль администратора EKOOOL:');if(!p)return false;try{const r=await fetch('/api/admin/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:p})}),x=await r.json();if(!r.ok||!x.token){toast(x.error||'Неверный пароль');return false}localStorage.EKOOOL_ADMIN_TOKEN=x.token;isAdmin=true;return true}catch(e){toast('Не удалось подключиться к серверу');return false}}
 async function init(){db=apiDb();isAdmin=false;
  app.innerHTML='<div class="body c" style="padding-top:12vh"><h1 style="font-size:34px;margin:0;color:var(--pr)">EKOOOL</h1><p style="color:var(--mut)">Мессенджер</p><div class="note">Подключение к серверу…</div></div>';
@@ -130,7 +147,30 @@ async function init(){db=apiDb();isAdmin=false;
    return auth();
  }
  await loadLock();if(LOCK.on&&!isAdmin)return lockScreen();
- try{const id=localStorage.ekid;if(id){let proof=null;try{proof=JSON.parse(localStorage.ekproof||'null')}catch(e){};me=proof&&proof.id===id?{id,passHash:proof.passHash}:null;const s=await db.doc('users/'+id).get();if(s.exists){me={id,...s.data()};const b=bad(me);return b?blocked(b):start()}}}catch(e){}
+ try{
+  const sid=await sessionCurrent();
+  if(sid){
+   const s=await db.doc('users/'+sid).get();
+   if(s.exists){
+    me={id:sid,...s.data()};
+    try{localStorage.ekid=me.id;localStorage.ekproof=JSON.stringify({id:me.id,passHash:me.passHash})}catch(e){}
+    const b=bad(me);return b?blocked(b):start();
+   }
+  }
+ }catch(e){}
+ try{
+  const id=localStorage.ekid;
+  if(id){
+   let proof=null;try{proof=JSON.parse(localStorage.ekproof||'null')}catch(e){}
+   me=proof&&proof.id===id?{id,passHash:proof.passHash}:null;
+   const s=await db.doc('users/'+id).get();
+   if(s.exists){
+    me={id,...s.data()};
+    await sessionLogin(me.id,me.passHash);
+    const b=bad(me);return b?blocked(b):start();
+   }
+  }
+ }catch(e){}
  auth()}
 const genId=()=>'EK-'+Array.from({length:8},()=>'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'[Math.random()*32|0]).join('');
 // ---- auth ----
@@ -153,13 +193,13 @@ function auth(mode='in',add){const reg=mode==='up',prev=add?me:null;
     else if(f.passHash!==await hp(pw,f.salt)){await botMsg(f.id,'⚠️ Попытка входа в ваш аккаунт с неверным паролем.\nВремя: '+new Date().toLocaleString());return er.textContent='Неверный юзернейм или пароль'}
     me=f}
    const b=bad(me);if(b)return blocked(b);
-   try{localStorage.ekid=me.id;localStorage.ekproof=JSON.stringify({id:me.id,passHash:me.passHash})}catch(e){}if(add&&prev&&prev.id!==me.id)await botMsg(prev.id,reg?'🆕 Зарегистрирован новый аккаунт @'+(me.username||me.id)+'. Он добавлен на это устройство.':'➕ На этом устройстве добавлен аккаунт @'+(me.username||me.id)+'.');if(!reg)await botMsg(me.id,'🔐 Выполнен вход в ваш аккаунт.\nВремя: '+new Date().toLocaleString()+'\nЕсли это были не вы — обратитесь к администратору.');start()}catch(e){er.textContent='Ошибка: '+(e.message||e.code)}}}
+   try{localStorage.ekid=me.id;localStorage.ekproof=JSON.stringify({id:me.id,passHash:me.passHash})}catch(e){}await sessionLogin(me.id,me.passHash);if(add&&prev&&prev.id!==me.id)await botMsg(prev.id,reg?'🆕 Зарегистрирован новый аккаунт @'+(me.username||me.id)+'. Он добавлен на это устройство.':'➕ На этом устройстве добавлен аккаунт @'+(me.username||me.id)+'.');if(!reg)await botMsg(me.id,'🔐 Выполнен вход в ваш аккаунт.\nВремя: '+new Date().toLocaleString()+'\nЕсли это были не вы — обратитесь к администратору.');start()}catch(e){er.textContent='Ошибка: '+(e.message||e.code)}}}
 // ---- helpers ----
 async function getUser(id){if(id===BOT.id)return BOT;if(id===BOTIDEA.id)return BOTIDEA;if(id===BOTNEW.id)return BOTNEW;if(!id)return null;if(cache[id])return cache[id];try{const s=await db.doc('users/'+id).get();if(s.exists){const d=s.data()||{};return(cache[id]={id,...d})}}catch(e){}try{const n=await db.doc('usernames/'+String(id).toLowerCase()).get();if(n.exists&&n.data()?.uid){const s=await db.doc('users/'+n.data().uid).get();if(s.exists){const d=s.data()||{};return(cache[id]={id:s.id,...d})}}}catch(e){}return null}
 const ava=(u,sz)=>u.photo?`<img class="av" src="${u.photo}" ${sz?`style="width:${sz}px;height:${sz}px"`:''}>`:`<div class="av" ${sz?`style="width:${sz}px;height:${sz}px;font-size:${sz/2.5}px"`:''}>${esc((u.name||'?')[0].toUpperCase())}</div>`;
 const nameV=u=>{u=u||{};const verified=u.verified===true||u.verified==='true'||u.verified===1;const red=u.red===true||u.red==='true'||u.red===1;const owner=u.owner===true||u.owner==='true'||u.owner===1;const tester=u.tester===true||u.tester==='true'||u.tester===1||u.testerBadge===true||u.testerBadge==='true'||u.testerBadge===1;return esc(u.name)+(verified?VF:'')+(red?RD:'')+(owner?'<span class="own" title="Владелец">👤❗</span>':'')+(tester?'<span class="tester-badge" onclick="testerInfo(event)" title="Тестер">🧪 ТЕСТЕР</span>':'')+(u.scam?'<span class="bd bs">СКАМ</span>':'')+(u.fake?'<span class="bd bf">ФЕЙК</span>':'')+(isPrem(u)?'<span class="pst" data-u="'+esc(u.username||u.id||'')+'" title="AmBler Premium">★</span>':'')};
 function bad(u){if(u.banned)return'Аккаунт заблокирован навсегда';if(u.blockedUntil>Date.now())return'Аккаунт временно заблокирован до '+new Date(u.blockedUntil).toLocaleString();return''}
-function blocked(m){app.innerHTML=`<div class="body c" style="padding-top:20vh"><h1>⛔</h1><p>${esc(m)}</p><button class="ib" id="lo">Выйти</button></div>`;$('#lo').onclick=()=>{try{delete localStorage.ekid;delete localStorage.ekproof}catch(e){}me=null;auth()}}
+function blocked(m){app.innerHTML=`<div class="body c" style="padding-top:20vh"><h1>⛔</h1><p>${esc(m)}</p><button class="ib" id="lo">Выйти</button></div>`;$('#lo').onclick=async()=>{await sessionLogout();try{delete localStorage.ekid;delete localStorage.ekproof}catch(e){}me=null;auth()}}
 const BOTNEW={id:'botnew',name:'BotNew',username:'botnew',verified:true,bot:true,bio:'Создатель ИИ-ботов EKOOOL. Напишите «новыйбот», чтобы создать своего бота.',get lastSeen(){return Date.now()},photo:'data:image/svg+xml,'+encodeURIComponent("<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' fill='#7c5cff'/><text x='50' y='68' font-size='56' text-anchor='middle'>🤖</text></svg>")};
 const BOT={id:'botregistor',name:'BotRegistor',username:'botregistor',verified:true,bot:true,bio:'Официальный бот EKOOOL. Сообщает о регистрации и попытках входа в ваш аккаунт.',get lastSeen(){return Date.now()},photo:'data:image/svg+xml,'+encodeURIComponent("<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' fill='#3b6cff'/><text x='50' y='68' font-size='56' text-anchor='middle'>🤖</text></svg>")};
 async function botMsg(uid,text){try{await db.doc('msgs/m'+Date.now()+Math.random().toString(36).slice(2,6)).set({chat:[BOT.id,uid].sort().join('_'),a:BOT.id,b:uid,ts:Date.now(),type:'text',text,bot:true})}catch(e){}}
@@ -226,6 +266,7 @@ async function accountSwitcher(){
    const id=b.dataset.ac;if(id===me.id)return d.remove();
    const s=await db.doc('users/'+id).get();if(!s.exists)return toast('Аккаунт не найден');
    me={id,...s.data()};try{localStorage.ekid=me.id;localStorage.ekproof=JSON.stringify({id:me.id,passHash:me.passHash})}catch(e){}
+   await sessionLogin(me.id,me.passHash);
    cache={};d.remove();const bb=bad(me);bb?blocked(bb):start();
  });
 }
@@ -551,10 +592,10 @@ async function settings(){clean();await fresh();
  const others=await Promise.all(accs().filter(x=>x!==me.id).map(async id=>{const u=await getUser(id);return u?`<button class="ib" data-sw="${id}" style="width:100%;text-align:left;margin-bottom:8px;padding:13px">🔁 Переключиться: ${esc(u.name)} ${esc(handle(u))}</button>`:''}));
  const B=(i,t)=>`<button class="ib" id="${i}" style="width:100%;text-align:left;margin-bottom:8px;padding:13px">${t}</button>`;
  app.innerHTML=`<div class="top">'+acctButton()+'<h1>Настройки</h1></div><div class="body"><p style="font-size:17px">💰 <b>${me.coins||0}</b> ЕКОКоинов</p>${isPrem(me)?`<p class="note">👑 AmBler Premium до ${new Date(me.premiumUntil).toLocaleDateString()}</p>`:''}${B('s8','👑 AmBler Premium')}${B('s13','🎨 Оформление')}${B('s9','🎨 Оформление чатов')}${B('s14','🔔 Уведомления')}${B('s15','🟢 Статус')}${B('s16','🛍 Магазин')}${B('s10','🔴 Заявка на красную галочку')}${B('s11','📞 Анонимный номер')}${B('s12','➕ Добавить аккаунт')}${others.join('')}${B('s1','✏️ Редактировать профиль')}${B('s2','🎁 Подарить коины')}${B('s3','📜 История коинов')}${B('s4','🔤 Юзернеймы')}${B('s5','🗑 Удалить аккаунт')}${canAdmin()?B('s6','🛠 Админ-панель'):''}${B('s7','Выйти')}</div>${nav('settings')}`;
- bindNav();document.querySelector("#acctBtn").onclick=accountSwitcher;$('#s12').onclick=()=>auth('in',true);document.querySelectorAll('[data-sw]').forEach(b=>b.onclick=async()=>{const sn=await db.doc('users/'+b.dataset.sw).get();if(!sn.exists)return toast('Аккаунт не найден');me={id:b.dataset.sw,...sn.data()};try{localStorage.ekid=me.id;localStorage.ekproof=JSON.stringify({id:me.id,passHash:me.passHash})}catch(e){}cache={};const bb=bad(me);bb?blocked(bb):start()});
+ bindNav();document.querySelector("#acctBtn").onclick=accountSwitcher;$('#s12').onclick=()=>auth('in',true);document.querySelectorAll('[data-sw]').forEach(b=>b.onclick=async()=>{const sn=await db.doc('users/'+b.dataset.sw).get();if(!sn.exists)return toast('Аккаунт не найден');me={id:b.dataset.sw,...sn.data()};try{localStorage.ekid=me.id;localStorage.ekproof=JSON.stringify({id:me.id,passHash:me.passHash})}catch(e){}await sessionLogin(me.id,me.passHash);cache={};const bb=bad(me);bb?blocked(bb):start()});
  $('#s11').onclick=numScreen;$('#s10').onclick=async()=>{if(me.red)return alert('У вас уже есть красная галочка 🔴');if(me.redReq)return alert('Заявка уже отправлена. Ожидайте решения администратора.');if(!await askConfirm('Подать заявку на красную галочку? Она подтверждает, что аккаунт принадлежит человеку, а не боту.'))return;await db.doc('users/'+me.id).update({redReq:true});me.redReq=true;alert('Заявка отправлена ✔')};$('#s8').onclick=premium;$('#s13').onclick=appTheme;$('#s9').onclick=chatTheme;$('#s14').onclick=async()=>{if(!('Notification' in window))return alert('Уведомления не поддерживаются');const p=await Notification.requestPermission();alert(p==='granted'?'Уведомления включены ✓':'Уведомления не разрешены')};$('#s15').onclick=async()=>{const v=prompt('Статус: online / away / dnd / invisible',me.status||'online');if(!v||!['online','away','dnd','invisible'].includes(v))return alert('Неизвестный статус');await db.doc('users/'+me.id).update({status:v,statusTs:Date.now()});me.status=v;alert('Статус сохранён ✓');settings()};$('#s16').onclick=()=>appTheme;$('#s1').onclick=editProfile;$('#s2').onclick=giftCoins;$('#s3').onclick=coinHistory;$('#s4').onclick=unScreen;
  $('#s5').onclick=async()=>{if(!await askConfirm('Удалить аккаунт навсегда вместе с сообщениями?'))return;await delAcc(me.id);try{delete localStorage.ekid}catch(e){}me=null;auth()};
- if(canAdmin())$('#s6').onclick=admin;$('#s7').onclick=()=>{const id0=me.id;try{delete localStorage.ekid;delete localStorage.ekproof;localStorage.ekaccs=JSON.stringify(accs().filter(x=>x!==id0))}catch(e){}me=null;auth()}}
+ if(canAdmin())$('#s6').onclick=admin;$('#s7').onclick=async()=>{const id0=me.id;await sessionLogout();try{delete localStorage.ekid;delete localStorage.ekproof;localStorage.ekaccs=JSON.stringify(accs().filter(x=>x!==id0))}catch(e){}me=null;auth()}}
 function editProfile(){sub('Редактировать',settings,`<div class="c"><div id="pa" style="display:flex;justify-content:center">${ava(me,96)}</div><p><label for="fl" id="ph" style="color:var(--pr);cursor:pointer;font-weight:600">Сменить фото</label></p><input type="file" id="fl" accept="image/*" hidden><input class="t" id="nm" value="${esc(me.name)}" placeholder="Имя"><textarea class="t" id="bi" rows="4" maxlength="200" placeholder="Описание профиля">${esc(me.bio||'')}</textarea><button class="pr" id="sv">Сохранить</button></div>`);
  const save=async p=>{await db.doc('users/'+me.id).update(p);Object.assign(me,p);cache={}};
 
