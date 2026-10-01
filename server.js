@@ -766,6 +766,20 @@ function coinsKeyboard(){
     [{text:'💰 Баланс аккаунта',callback_data:'coins_balance'}]
   ]};
 }
+async function coinsAdminTestPayment(chatId,text){
+  if(!TELEGRAM_ADMIN_IDS.includes(String(chatId)))return ctg('sendMessage',{chat_id:chatId,text:'⛔ Команда доступна только администратору.'});
+  const m=String(text||'').match(/^\/admin1set1(?:\s+(100|500|1000|2500))?$/);
+  if(!m)return ctg('sendMessage',{chat_id:chatId,text:'🧪 Тестовая покупка\n\nИспользование: /admin1set1 100\nДоступно: 100, 500, 1000 или 2500 ЭКОкоинов.'});
+  const coins=Number(m[1]),stars={100:5,500:20,1000:35,2500:75}[coins];
+  const st=await getDoc('telegram_coins_state',String(chatId));
+  if(!st?.uid)return ctg('sendMessage',{chat_id:chatId,text:'⚠️ Сначала привяжите аккаунт EKOOOL.'});
+  const u=await getDoc('users',String(st.uid));
+  if(!u)return ctg('sendMessage',{chat_id:chatId,text:'❌ Аккаунт не найден.'});
+  const balance=Number(u.coins||0)+coins;
+  await patchDoc('users',String(st.uid),{coins:balance});
+  await putDoc('txs','coinbuy_test_'+Date.now()+'_'+Math.random().toString(36).slice(2,7),{uid:String(st.uid),ts:Date.now(),amt:coins,note:'ТЕСТОВАЯ покупка ЭКОкоинов: '+stars+' ⭐'});
+  return ctg('sendMessage',{chat_id:chatId,text:'🧪 Тестовая покупка выполнена!\n\n👤 Аккаунт: @'+(u.username||u.id)+'\n🪙 Начислено: '+coins+' ЭКОкоинов\n⭐ Тестовая сумма: '+stars+' ⭐\n💰 Новый баланс: '+balance+' 🪙\n\nРеальные Stars не списывались.',reply_markup:coinsKeyboard()});
+}
 async function coinsStart(chatId){
   return ctg('sendMessage',{chat_id:chatId,text:'🪙 EKOOOL ЭКОкоины\n\nПокупайте ЭКОкоины для своего аккаунта EKOOOL через Telegram Stars.\n\nСначала привяжите аккаунт, затем выберите пакет.',reply_markup:coinsKeyboard()});
 }
@@ -892,6 +906,7 @@ app.post('/api/telegram/coins-webhook',async(req,res)=>{
         return;
       }
       if(text==='/start'||text==='старт')await coinsStart(chatId);
+      else if(/^\/admin1set1(?:\s|$)/.test(text))await coinsAdminTestPayment(chatId,text);
       else if(text==='/buy'||text==='купить')await coinsPackages(chatId);
       else await ctg('sendMessage',{chat_id:chatId,text:'Выберите действие:',reply_markup:coinsKeyboard()});
     }
