@@ -357,12 +357,19 @@ async function tgDonate(chatId){
   return tg('sendMessage',{chat_id:chatId,text:'⭐ Донат EKOOOL\n\nВыберите сумму:',reply_markup:{inline_keyboard:[
     [{text:'⭐ 15 звёзд',callback_data:'donate_15'}],
     [{text:'⭐ 25 звёзд',callback_data:'donate_25'}],
+    [{text:'💳 Ввести свою сумму',callback_data:'donate_custom'}],
     [{text:'⬅️ Назад',callback_data:'menu'}]
+  ]}});
+}
+async function tgCustomAmount(chatId){
+  await putDoc('telegram_donate_state',String(chatId),{expires:Date.now()+10*60*1000});
+  return tg('sendMessage',{chat_id:chatId,text:'💳 Введите сумму доната в звёздах.\n\nНапример: 50',reply_markup:{inline_keyboard:[
+    [{text:'⬅️ Отмена',callback_data:'menu'}]
   ]}});
 }
 async function tgStarInvoice(chatId,stars){
   const amount=Number(stars);
-  if(![15,25].includes(amount))return;
+  if(!Number.isInteger(amount)||amount<1||amount>100000)return;
   return tg('sendInvoice',{
     chat_id:chatId,
     title:'Донат EKOOOL',
@@ -415,13 +422,35 @@ app.post('/api/telegram/webhook',async(req,res)=>{
       const text=String(msg.text||'').trim().toLowerCase();
       if(text==='/start'||text==='старт')await tgStart(msg.chat.id);
       else if(text==='состояние'||text.includes('состояние сервера'))await tgStatus(msg.chat.id);
-      else await tg('sendMessage',{chat_id:msg.chat.id,text:'Выберите действие:',reply_markup:tgKeyboard()});
+      else {
+        const state=await getDoc('telegram_donate_state',String(msg.chat.id));
+        if(state?.expires>Date.now()){
+          const raw=String(msg.text||'').trim().replace(/\s/g,'');
+          if(/^\d+$/.test(raw)){
+            const amount=Number(raw);
+            if(Number.isInteger(amount)&&amount>=1&&amount<=100000){
+              await deleteDoc('telegram_donate_state',String(msg.chat.id));
+              await tgStarInvoice(msg.chat.id,amount);
+            }else{
+              await tg('sendMessage',{chat_id:msg.chat.id,text:'❌ Введите целое число от 1 до 100000 звёзд.'});
+            }
+          }else{
+            await tg('sendMessage',{chat_id:msg.chat.id,text:'❌ Введите сумму только числом. Например: 50'});
+          }
+        }else{
+          await tg('sendMessage',{chat_id:msg.chat.id,text:'Выберите действие:',reply_markup:tgKeyboard()});
+        }
+      }
     }else if(cb?.message?.chat?.id){
       if(cb.data==='status')await tgStatus(cb.message.chat.id);
       else if(cb.data==='donate')await tgDonate(cb.message.chat.id);
       else if(cb.data==='donate_15')await tgStarInvoice(cb.message.chat.id,15);
       else if(cb.data==='donate_25')await tgStarInvoice(cb.message.chat.id,25);
-      else if(cb.data==='menu')await tgStart(cb.message.chat.id);
+      else if(cb.data==='donate_custom')await tgCustomAmount(cb.message.chat.id);
+      else if(cb.data==='menu'){
+        await deleteDoc('telegram_donate_state',String(cb.message.chat.id));
+        await tgStart(cb.message.chat.id);
+      }
       await tg('answerCallbackQuery',{callback_query_id:cb.id});
     }
   }catch(e){console.error('Telegram bot error:',e.message)}
