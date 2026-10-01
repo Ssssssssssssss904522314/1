@@ -426,21 +426,25 @@ app.post('/api/telegram/webhook',async(req,res)=>{
     const cb=u.callback_query;
     const pc=u.pre_checkout_query;
     if(pc?.id){
-      const ok=pc.currency==='XTR' && [15,25].includes(Number(pc.total_amount)) && String(pc.invoice_payload||'').startsWith('ekoool_donate_');
+      const payload=String(pc.invoice_payload||'');
+      const ok=pc.currency==='XTR' && (
+        (payload.startsWith('ekoool_donate_') && [15,25].includes(Number(pc.total_amount))) ||
+        (payload.startsWith('ekoool_account_50_') && Number(pc.total_amount)===50)
+      );
       await tg('answerPreCheckoutQuery',{pre_checkout_query_id:pc.id,ok,...(!ok?{error_message:'Не удалось подтвердить донат. Попробуйте ещё раз.'}:{})});
       return;
     }
     if(msg?.successful_payment?.telegram_payment_charge_id){
       const p=msg.successful_payment;
-      await putDoc('telegram_donations',p.telegram_payment_charge_id,{
-        chatId:msg.chat.id,
-        userId:msg.from?.id||null,
-        stars:p.total_amount,
-        payload:p.invoice_payload,
-        chargeId:p.telegram_payment_charge_id,
-        ts:Date.now()
+      await putDoc('telegram_payments',p.telegram_payment_charge_id,{
+        chatId:msg.chat.id,userId:msg.from?.id||null,stars:p.total_amount,
+        payload:p.invoice_payload,chargeId:p.telegram_payment_charge_id,ts:Date.now()
       });
-      await tg('sendMessage',{chat_id:msg.chat.id,text:'⭐ Спасибо за донат!\n\nВы поддержали развитие EKOOOL на '+p.total_amount+' звёзд. ❤️',reply_markup:tgKeyboard()});
+      if(String(p.invoice_payload||'').startsWith('ekoool_account_50_')){
+        await tgCreatePurchasedAccount(msg.chat.id,msg.from?.id||msg.chat.id);
+      }else{
+        await tg('sendMessage',{chat_id:msg.chat.id,text:'⭐ Спасибо за донат!\n\nВы поддержали развитие EKOOOL на '+p.total_amount+' звёзд. ❤️',reply_markup:tgKeyboard()});
+      }
       return;
     }
     if(msg?.chat?.id){
