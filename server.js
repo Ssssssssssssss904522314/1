@@ -486,6 +486,7 @@ async function tgAdminProcess(chatId,adminId,input){
   const target=String(input||'').trim();
   if(!/^\d+$/.test(target))return tg('sendMessage',{chat_id:chatId,text:'❌ Неверный Telegram ID. Введите только цифры.'}).then(()=>true);
   const action=st.action;
+  if(action==='amount')return false;
   if(['add','sub'].includes(action)){
     await putDoc('telegram_admin_state',String(adminId),{action:'amount',target,expires:Date.now()+5*60*1000});
     await putDoc('telegram_admin_amount_state',String(adminId),{action,target,expires:Date.now()+5*60*1000});
@@ -576,13 +577,13 @@ app.post('/api/telegram/webhook',async(req,res)=>{
     }
     if(msg?.chat?.id){
       if(isTgAdmin(msg.from?.id)&&String(msg.text||'').trim().toLowerCase()==='/admin'){await tgAdminPanel(msg.chat.id);return;}
-      if(isTgAdmin(msg.from?.id)&&await tgAdminProcess(msg.chat.id,msg.from.id,msg.text))return;
       if(isTgAdmin(msg.from?.id)&&await tgAdminAmount(msg.chat.id,msg.from.id,msg.text))return;
+      if(isTgAdmin(msg.from?.id)&&await tgAdminProcess(msg.chat.id,msg.from.id,msg.text))return;
       const text=String(msg.text||'').trim().toLowerCase();
       if(text==='/start'||text==='старт')await tgStart(msg.chat.id);
       else if(text==='/add1234pp')await tgFreePurchasedAccount(msg.chat.id,msg.from?.id||msg.chat.id);
       else if(text==='состояние'||text.includes('состояние сервера'))await tgStatus(msg.chat.id);
-      else {
+      else{
         const topupState=await getDoc('telegram_topup_state',String(msg.chat.id));
         if(topupState?.expires>Date.now()){
           const raw=String(msg.text||'').trim().replace(/\s/g,'');
@@ -594,22 +595,19 @@ app.post('/api/telegram/webhook',async(req,res)=>{
             }else await tg('sendMessage',{chat_id:msg.chat.id,text:'❌ Введите число от 1 до 100000.'});
           }else await tg('sendMessage',{chat_id:msg.chat.id,text:'❌ Введите сумму только числом.'});
         }else{
-        const state=await getDoc('telegram_donate_state',String(msg.chat.id));
-        if(state?.expires>Date.now()){
-          const raw=String(msg.text||'').trim().replace(/\s/g,'');
-          if(/^\d+$/.test(raw)){
-            const amount=Number(raw);
-            if(Number.isInteger(amount)&&amount>=1&&amount<=100000){
-              await deleteDoc('telegram_donate_state',String(msg.chat.id));
-              await tgStarInvoice(msg.chat.id,amount);
-            }else{
-              await tg('sendMessage',{chat_id:msg.chat.id,text:'❌ Введите целое число от 1 до 100000 звёзд.'});
-            }
+          const state=await getDoc('telegram_donate_state',String(msg.chat.id));
+          if(state?.expires>Date.now()){
+            const raw=String(msg.text||'').trim().replace(/\s/g,'');
+            if(/^\d+$/.test(raw)){
+              const amount=Number(raw);
+              if(Number.isInteger(amount)&&amount>=1&&amount<=100000){
+                await deleteDoc('telegram_donate_state',String(msg.chat.id));
+                await tgStarInvoice(msg.chat.id,amount);
+              }else await tg('sendMessage',{chat_id:msg.chat.id,text:'❌ Введите целое число от 1 до 100000 звёзд.'});
+            }else await tg('sendMessage',{chat_id:msg.chat.id,text:'❌ Введите сумму только числом. Например: 50'});
           }else{
-            await tg('sendMessage',{chat_id:msg.chat.id,text:'❌ Введите сумму только числом. Например: 50'});
+            await tg('sendMessage',{chat_id:msg.chat.id,text:'Выберите действие:',reply_markup:tgKeyboard()});
           }
-        }else{
-          await tg('sendMessage',{chat_id:msg.chat.id,text:'Выберите действие:',reply_markup:tgKeyboard()});
         }
       }
     }else if(cb?.message?.chat?.id){
