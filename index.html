@@ -121,20 +121,20 @@ function apiDb(){
  return{doc,collection:c=>q(c)}}
 async function sessionLogin(uid,proof){
  try{
-  const r=await fetch('/api/auth/session',{method:'POST',headers:{'Content-Type':'application/json'},credentials:'same-origin',body:JSON.stringify({uid,proof})});
+  const r=await fetch('/api/auth/session',{method:'POST',headers:{'Content-Type':'application/json'},credentials:'include',body:JSON.stringify({uid,proof})});
   return r.ok;
  }catch(e){return false}
 }
 async function sessionCurrent(){
  try{
-  const r=await fetch('/api/auth/session',{credentials:'same-origin'});
+  const r=await fetch('/api/auth/session',{credentials:'include'});
   if(!r.ok)return null;
   const x=await r.json();
   return x.id||null;
  }catch(e){return null}
 }
 async function sessionLogout(){
- try{await fetch('/api/auth/logout',{method:'POST',credentials:'same-origin'})}catch(e){}
+ try{await fetch('/api/auth/logout',{method:'POST',credentials:'include'})}catch(e){}
 }
 async function adminLogin(){const p=prompt('Пароль администратора EKOOOL:');if(!p)return false;try{const r=await fetch('/api/admin/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:p})}),x=await r.json();if(!r.ok||!x.token){toast(x.error||'Неверный пароль');return false}localStorage.EKOOOL_ADMIN_TOKEN=x.token;isAdmin=true;return true}catch(e){toast('Не удалось подключиться к серверу');return false}}
 async function init(){db=apiDb();isAdmin=false;
