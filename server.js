@@ -791,8 +791,8 @@ async function coinsConfirm(chatId,coins,stars){
   if(!u)return ctg('sendMessage',{chat_id:chatId,text:'❌ Аккаунт не найден. Привяжите его заново.'});
   const finalStars=Boolean(u.scam)?stars*2:stars;
   await putDoc('telegram_coins_pending',String(chatId),{uid:st.uid,coins,stars:finalStars,expires:Date.now()+15*60*1000});
-  return ctg('sendMessage',{chat_id:chatId,text:'🪙 Подтверждение покупки\\n\\n👤 Аккаунт: @'+(u.username||u.id)+'\\n🪙 ЭКОкоинов: '+coins+'\\n⭐ Стоимость: '+finalStars+' ⭐'+(u.scam?'\\n⚠️ Для аккаунта с меткой «Скам» действует цена ×2.':'')+'\\n\\nПодтвердить покупку?',reply_markup:{inline_keyboard:[
-    [{text:'✅ Купить',callback_data:'coins_confirm_'+coins+'_'+finalStars}],
+  return ctg('sendMessage',{chat_id:chatId,text:'🪙 Подтверждение покупки\n\n👤 Аккаунт: @'+(u.username||u.id)+'\n🪙 ЭКОкоинов: '+coins+'\n⭐ Стоимость: '+finalStars+' ⭐'+(u.scam?'\n⚠️ Для аккаунта с меткой «Скам» действует цена ×2.':'')+'\n\nПодтвердить покупку?',reply_markup:{inline_keyboard:[
+    [{text:'✅ Купить',callback_data:'coins_confirm_'+coins+'_'+stars}],
     [{text:'❌ Отмена',callback_data:'coins_buy'}]
   ]}});
 }
