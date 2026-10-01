@@ -276,14 +276,15 @@ async function accountSwitcher(){
 function home(){clean();
  app.innerHTML=`<div class="top">${acctButton()}<div class="home-search" style="flex:1"><span>⌕</span><input id="hs" placeholder="Поиск" autocomplete="off"></div></div><div class="body" id="ls">${pinAll([])}<p class="c" style="color:var(--mut)">Чатов пока нет. Найдите пользователя через поиск выше.</p></div>${nav('chats')}`;
  bindNav();document.querySelector("#acctBtn").onclick=accountSwitcher;
- const seen={};let myG=[];let allUsers=[];let searchTimer=0;
+ const seen={};let myG=[];let allUsers=[];let allUsersAt=0;let searchTimer=0;
  const draw=async()=>{const arr=Object.values(seen).sort((a,b)=>b.ts-a.ts);
   const rows=await Promise.all(arr.map(async m=>{if(m.anon)return`<div class="row" data-id="anon"><div class="av">🎁</div><div><div class="n">Анонимные подарки</div><div class="s">🎭 Подарок от неизвестного</div></div></div>`;const o=m.a===me.id?m.b:m.a,u=await getUser(o)||{name:o};
    return`<div class="row" data-id="${esc(o)}">${ava(u)}<div><div class="n">${nameV(u)}</div><div class="s">${m.secret?'🔒 Секретное сообщение':m.type==='gift'?'🎁 Подарок':m.type==='img'?'📷 Фото':m.type==='voice'?'🎤 Голосовое':esc((m.text||'').slice(0,40))}</div></div></div>`}));
   const q=($('#hs')?.value||'').trim().toLowerCase();
   if(q){
-    if(!allUsers.length){try{const ur=await db.collection('users').get();allUsers=(Array.isArray(ur?.docs)?ur.docs:[]).map(d=>({id:d.id,...d.data()}))}catch(e){allUsers=[]}}
-    const results=allUsers.filter(u=>u.id!==me.id&&((u.name||'')+' '+(u.username||'')+' '+(u.extra||[]).join(' ')).toLowerCase().includes(q)).slice(0,30);
+    if(!allUsers.length||Date.now()-allUsersAt>10000){try{const ur=await db.collection('users').get();allUsers=(Array.isArray(ur?.docs)?ur.docs:[]).map(d=>({id:d.id,...d.data()}));allUsersAt=Date.now()}catch(e){}}
+    let results=allUsers.filter(u=>u.id!==me.id&&((u.name||'')+' '+(u.username||'')+' '+(u.extra||[]).join(' ')).toLowerCase().includes(q)).slice(0,30);
+    try{const direct=await findUser(q,false);if(direct&&direct.id!==me.id&&!results.some(u=>u.id===direct.id))results.unshift(direct)}catch(e){}
     $('#ls').innerHTML='<div class="note" style="padding:8px 4px">Результаты поиска</div>'+(results.map(u=>`<div class="row" data-id="${esc(u.id)}">${ava(u)}<div><div class="n">${nameV(u)}</div><div class="s">${esc(handle(u))}</div></div></div>`).join('')||'<p class="c note">Ничего не найдено</p>');bindRows();return;
   }
   if(!arr.length&&!myG.length){$('#ls').innerHTML=pinAll([])+'<p class="c" style="color:var(--mut)">Чатов пока нет. Найдите пользователя через поиск выше.</p>';return}
