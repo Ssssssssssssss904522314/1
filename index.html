@@ -209,7 +209,7 @@ function auth(mode='in',add){
      const nm=$('#nm').value.trim(),un=$('#un').value.trim().toLowerCase().replace(/^@/,''),email=String($('#em').value||'').trim().toLowerCase();
      if(!nm)return er.textContent='Введите имя';
      const ue=uerr(un);if(ue)return er.textContent=ue;
-     if(!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]{2,}$/i.test(email))return er.textContent='Введите корректную почту';
+     if(!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/i.test(email))return er.textContent='Введите корректную почту';
      if((await db.doc('usernames/'+un).get()).exists)return er.textContent='Юзернейм занят';
      const codeEl=$('#ec');
      if(!regPending){
