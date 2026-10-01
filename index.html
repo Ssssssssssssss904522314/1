@@ -166,6 +166,24 @@ input.t,textarea.t,select.t{background:rgba(255,255,255,.38)!important}
 @media(min-width:560px){#app{background:rgba(255,255,255,.10);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px)}}
 @media(max-width:559px){.top{margin:4px 7px 0}.body{padding-left:10px;padding-right:10px}.row{border-radius:22px}.nav{margin-left:8px;margin-right:8px}}
 @media(prefers-reduced-motion:reduce){body:before,body:after{animation:none}}
+/* ---- EKOOOL LIQUID GLASS SMOOTHNESS ---- */
+*{scroll-behavior:smooth}
+body{transition:background .7s cubic-bezier(.22,1,.36,1)}
+.top,.bar,.nav,.row,.ib,.pr,.m,input.t,textarea.t,select.t{
+ transition:transform .38s cubic-bezier(.22,1,.36,1),box-shadow .5s cubic-bezier(.22,1,.36,1),background-color .5s ease,border-color .5s ease,opacity .35s ease;
+}
+.ib:hover,.pr:hover{transform:translateY(-1px) scale(1.015)}
+.ib:active,.pr:active{transform:scale(.96);transition-duration:.12s}
+.row{will-change:transform;transition:transform .45s cubic-bezier(.22,1,.36,1),box-shadow .5s cubic-bezier(.22,1,.36,1),background-color .5s ease}
+.m{will-change:transform,opacity;animation:lgMessageIn .42s cubic-bezier(.22,1,.36,1) both}
+@keyframes lgMessageIn{from{opacity:0;transform:translateY(8px) scale(.985)}to{opacity:1;transform:none}}
+.body{animation:lgPageIn .5s cubic-bezier(.22,1,.36,1) both}
+@keyframes lgPageIn{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:none}}
+body:before,body:after{animation-duration:20s;animation-timing-function:cubic-bezier(.45,0,.55,1)}
+.top,.bar,.nav,.row,.m,.ib,.pr,input.t,textarea.t,select.t{
+ backdrop-filter:saturate(190%) blur(30px);
+ -webkit-backdrop-filter:saturate(190%) blur(30px);
+}
 </style></head><body><div id="app"><div id="bootFallback" style="height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:30px;text-align:center"><div style="font-size:42px;margin-bottom:12px">💬</div><h1 style="margin:0 0 8px;color:var(--pr)">EKOOOL</h1><p style="margin:0 0 18px;color:var(--mut)">Мессенджер загружается…</p><button onclick="if(window.auth){window.auth()}else{location.reload()}" style="border:0;border-radius:12px;padding:11px 22px;background:var(--pr);color:#fff;cursor:pointer">Открыть мессенджер</button></div></div>
 <script>
 const TEST_E2EE=1;
