@@ -453,6 +453,88 @@ app.post('/api/botcloude/message',async(req,res)=>{
   }catch(e){res.status(500).json({error:e.message||'Ошибка @botcloude'})}
 });
 
+// ---- HelpBot: AI first-line support + human support queue ----
+const HELPBOT_ID='helpbot';
+async function helpBotRoute(text){
+  const prompt='Ты маршрутизатор поддержки мессенджера EKOOOL. Верни ТОЛЬКО JSON без markdown: {"action":"ai"|"human"}. action=ai только для простых общих вопросов о функциях EKOOOL, навигации, настройках, регистрации, сообщениях, профиле и базовом использовании. action=human для проблем конкретного аккаунта, входа/пароля, платежей/коинов, блокировок/жалоб, безопасности, ошибок/сбоев, спорных ситуаций или если пользователь просит сотрудника. Если сомневаешься — human.';
+  try{
+    const raw=await openAIText(prompt,[{role:'user',content:text}]);
+    const m=raw.match(/\{[\s\S]*\}/);if(m){const x=JSON.parse(m[0]);if(x.action==='ai'||x.action==='human')return x.action;}
+  }catch(e){}
+  return /как|где|что нажать|настройк|профил|чат|сообщен|юзернейм|регистрац|добавить аккаунт|подар|оформлен/i.test(text)?'ai':'human';
+}
+async function helpAiAnswer(text){
+  return openAIText('Ты — @HelpBot, первая линия поддержки EKOOOL. Отвечай кратко, дружелюбно и по делу на русском или на языке пользователя. Помогай только с общими и простыми вопросами о мессенджере: чаты, сообщения, профиль, юзернеймы, настройки, навигация и базовые функции. Если вопрос требует доступа к аккаунту, оплаты, разблокировки, расследования, безопасности или сотрудника — скажи, что передаёшь обращение сотруднику. Не выдумывай функции.',[{role:'user',content:text}]);
+}
+async function helpBotMessage(userId,text){
+  const user=await getDoc('users',userId);if(!user)return null;
+  const action=await helpBotRoute(text);
+  if(action==='ai'){
+    try{return{action:'ai',text:await helpAiAnswer(text)}}catch(e){}
+  }
+  const open=(await getCollection('helpTickets')).filter(x=>x.data?.userId===userId&&x.data?.status!=='closed').sort((a,b)=>(b.data?.updatedAt||0)-(a.data?.updatedAt||0))[0];
+  const ticketId=open?.id||('HT-'+Date.now()+'-'+crypto.randomBytes(3).toString('hex'));
+  const ticket=open?.data||{userId,status:'open',workerId:'',createdAt:Date.now(),updatedAt:Date.now(),messages:[]};
+  ticket.status=ticket.workerId?'assigned':'open';ticket.updatedAt=Date.now();
+  ticket.messages=[...(ticket.messages||[]),{from:'user',uid:userId,text,ts:Date.now()}].slice(-30);
+  await putDoc('helpTickets',ticketId,ticket);
+  return{action:'human',ticketId,text:ticket.workerId?'👨‍💻 Ваше обращение уже передано сотруднику поддержки. Ожидайте ответа.':'🆘 Я передал вопрос сотрудникам поддержки. Как только свободный сотрудник примет обращение, он ответит вам здесь.'};
+}
+function isSupportAgent(req){return (async()=>{const u=await userAuth(req);return u&&!!u.supportAgent&&!u.banned&&!u.blockedUntil||null})()}
+app.post('/api/helpbot/message',async(req,res)=>{
+  try{
+    const au=await userAuth(req),userId=String(req.body?.userId||'').trim(),text=String(req.body?.text||'').trim();
+    if(!au||au.id!==userId)return res.status(401).json({error:'Unauthorized'});
+    if(!text)return res.status(400).json({error:'Нужен текст'});
+    const out=await helpBotMessage(userId,text);
+    const mid='m'+Date.now()+Math.random().toString(36).slice(2,6);
+    await putDoc('msgs',mid,{chat:[HELPBOT_ID,userId].sort().join('_'),a:HELPBOT_ID,b:userId,ts:Date.now(),type:'text',text:out.text,bot:true});
+    res.json({ok:true,...out});
+  }catch(e){res.status(500).json({error:e.message||'Ошибка @HelpBot'})}
+});
+app.get('/api/helpbot/tickets',async(req,res)=>{
+  try{if(!(await isSupportAgent(req)))return res.status(403).json({error:'Forbidden'});
+    const docs=(await getCollection('helpTickets')).map(x=>({id:x.id,...x.data})).filter(x=>x.status!=='closed').sort((a,b)=>(b.updatedAt||0)-(a.updatedAt||0));
+    res.json({ok:true,tickets:docs.slice(0,100)});
+  }catch(e){res.status(500).json({error:e.message})}
+});
+app.post('/api/helpbot/availability',async(req,res)=>{
+  try{const u=await userAuth(req);if(!u||!u.supportAgent)return res.status(403).json({error:'Forbidden'});const available=!!req.body?.available;await patchDoc('users',u.id,{supportAvailable:available,supportStatusAt:Date.now()});res.json({ok:true,available});}
+  catch(e){res.status(500).json({error:e.message})}
+});
+app.post('/api/helpbot/claim',async(req,res)=>{
+  try{const u=await userAuth(req);if(!u||!u.supportAgent)return res.status(403).json({error:'Forbidden'});
+    if(!u.supportAvailable)return res.status(409).json({error:'Сначала включите статус «Свободен»'});
+    const id=String(req.body?.ticketId||''),t=await getDoc('helpTickets',id);
+    if(!t||t.status==='closed')return res.status(404).json({error:'Обращение не найдено'});
+    if(t.workerId&&t.workerId!==u.id)return res.status(409).json({error:'Обращение уже принял другой сотрудник'});
+    const nt={...t,status:'assigned',workerId:u.id,updatedAt:Date.now()};
+    await putDoc('helpTickets',id,nt);
+    await putDoc('msgs','m'+Date.now()+Math.random().toString(36).slice(2,6),{chat:[HELPBOT_ID,t.userId].sort().join('_'),a:HELPBOT_ID,b:t.userId,ts:Date.now(),type:'text',text:'👨‍💻 Сотрудник поддержки принял ваше обращение и скоро ответит.',bot:true});
+    res.json({ok:true,ticket:nt});
+  }catch(e){res.status(500).json({error:e.message})}
+});
+app.post('/api/helpbot/reply',async(req,res)=>{
+  try{const u=await userAuth(req);if(!u||!u.supportAgent)return res.status(403).json({error:'Forbidden'});
+    const id=String(req.body?.ticketId||''),text=String(req.body?.text||'').trim(),t=await getDoc('helpTickets',id);
+    if(!t||t.status==='closed')return res.status(404).json({error:'Обращение закрыто'});
+    if(t.workerId!==u.id)return res.status(403).json({error:'Сначала примите обращение'});
+    if(!text)return res.status(400).json({error:'Пустой ответ'});
+    const nt={...t,updatedAt:Date.now(),messages:[...(t.messages||[]),{from:'worker',uid:u.id,text,ts:Date.now()}].slice(-30)};
+    await putDoc('helpTickets',id,nt);
+    await putDoc('msgs','m'+Date.now()+Math.random().toString(36).slice(2,6),{chat:[HELPBOT_ID,t.userId].sort().join('_'),a:HELPBOT_ID,b:t.userId,ts:Date.now(),type:'text',text:'👨‍💻 '+text,bot:true});
+    res.json({ok:true});
+  }catch(e){res.status(500).json({error:e.message})}
+});
+app.post('/api/helpbot/close',async(req,res)=>{
+  try{const u=await userAuth(req);if(!u||!u.supportAgent)return res.status(403).json({error:'Forbidden'});
+    const id=String(req.body?.ticketId||''),t=await getDoc('helpTickets',id);if(!t)return res.status(404).json({error:'Обращение не найдено'});
+    if(t.workerId!==u.id)return res.status(403).json({error:'Только назначенный сотрудник может закрыть обращение'});
+    await patchDoc('helpTickets',id,{status:'closed',updatedAt:Date.now()});
+    await putDoc('msgs','m'+Date.now()+Math.random().toString(36).slice(2,6),{chat:[HELPBOT_ID,t.userId].sort().join('_'),a:HELPBOT_ID,b:t.userId,ts:Date.now(),type:'text',text:'✅ Обращение закрыто сотрудником поддержки. Если понадобится помощь — напишите снова.',bot:true});
+    res.json({ok:true});
+  }catch(e){res.status(500).json({error:e.message})}
+});
 app.post('/api/botnew/message',async(req,res)=>{
   try{
     const au=await userAuth(req);if(!au||au.id!==String(req.body?.userId||''))return res.status(401).json({error:'Unauthorized'});
