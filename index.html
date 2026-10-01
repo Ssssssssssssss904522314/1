@@ -174,6 +174,7 @@ async function init(){db=apiDb();isAdmin=false;
  }catch(e){}
  auth()}
 const genId=()=>'EK-'+Array.from({length:8},()=>'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'[Math.random()*32|0]).join('');
+const isPurchasedUser=u=>!!(u&&((u.purchased===true)||(u.bio==='Покупной аккаунт EKOOOL')));
 // ---- auth ----
 function auth(mode='in',add){const reg=mode==='up',prev=add?me:null;
  app.innerHTML=`<div class="body c" style="padding-top:${add?'4vh':'12vh'}">${add?'<div style="text-align:left"><button class="ib" id="bk">← Назад</button></div>':''}<h1 style="font-size:34px;margin:0;color:var(--pr)">EKOOOL</h1><p style="color:var(--mut)">${add?'Добавить аккаунт':'Мессенджер'}</p>
@@ -187,7 +188,7 @@ function auth(mode='in',add){const reg=mode==='up',prev=add?me:null;
   if(pw.length<6)return er.textContent='Пароль: минимум 6 символов';
   try{if(reg){const nm=$('#nm').value.trim(),un=$('#un').value.trim().toLowerCase().replace(/^@/,'');if(!nm)return er.textContent='Введите имя';
     const ue=uerr(un);if(ue)return er.textContent=ue;if((await db.doc('usernames/'+un).get()).exists)return er.textContent='Юзернейм занят';
-    const id=genId(),salt=genSalt(),u={name:nm,photo:'',bio:'',verified:false,coins:1000,username:un,extra:[],salt,passHash:await hp(pw,salt),lastSeen:Date.now(),ts:Date.now()};
+    const id=genId(),salt=genSalt(),u={name:nm,photo:'',bio:'',verified:false,purchased:false,coins:1000,username:un,extra:[],salt,passHash:await hp(pw,salt),lastSeen:Date.now(),ts:Date.now()};
     await db.doc('users/'+id).set(u);await db.doc('usernames/'+un).set({uid:id});me={id,...u};try{await db.doc('gm/'+WELCOME_CH+'_'+id).set({gid:WELCOME_CH,uid:id,ts:Date.now()})}catch(e){}await botMsg(id,'✅ Регистрация прошла успешно!\nВаш аккаунт @'+un+' создан. Добро пожаловать в EKOOOL!')}
    else{const f=await findUser($('#id').value,true);if(!f)return er.textContent='Неверный юзернейм или пароль';
     if(!f.passHash){const salt=genSalt(),ph=await hp(pw,salt);await db.doc('users/'+f.id).update({salt,passHash:ph});f.salt=salt;f.passHash=ph}
@@ -296,7 +297,7 @@ function addChat(){clean();
  $('#bk').onclick=home;$('#ng').onclick=()=>createGroup(false);$('#nc').onclick=()=>createGroup(true);$('#go').onclick=async()=>{const gv=$('#tid').value.trim();if(/^G-[A-Z0-9]{6}$/i.test(gv))return joinGroup(gv.toUpperCase());const u=await findUser($('#tid').value);if(!u)return $('#er').textContent='Пользователь не найден';if(u.id===me.id)return $('#er').textContent='Это вы';chat(u.id)}}
 // ---- chat ----
 async function chat(oid){clean();delete cache[oid];await loadGifts();let o=await getUser(oid);if(!o){try{o=await findUser(oid,true)}catch(e){}}o=o||{id:oid,name:(String(oid).startsWith('EK-')?'Пользователь':oid),username:''};if(!o.name)o.name=o.username?'@'+o.username:'Пользователь';if(!o.photo)o.photo='';cache[oid]=o;const k=cid(me.id,oid);
- app.innerHTML=`<div class="top"><button class="ib" id="bk">←</button>${ava(o,36)}<div id="hd" style="flex:1;cursor:pointer;min-width:0"><h1 style="font-size:16px">${nameV(o)}</h1><div id="st" style="font-size:12px;color:var(--mut)">${seenTxt(o)}</div></div><button class="ib" id="sc" title="Секретный чат">${getSecretRaw(oid)?'🔒':'🔓'}</button><button class="ib" id="dc">🗑</button></div><div class="body">${o.scam?'<div class="warn">⚠️ Пользователь отмечен как СКАМ. Не переводите деньги и не сообщайте данные.</div>':''}${o.fake?'<div class="warn">🎭 Аккаунт отмечен как ФЕЙК.</div>':''}<div class="msgs" id="ms"></div></div>
+ app.innerHTML=`<div class="top"><button class="ib" id="bk">←</button>${ava(o,36)}<div id="hd" style="flex:1;cursor:pointer;min-width:0"><h1 style="font-size:16px">${nameV(o)}</h1><div id="st" style="font-size:12px;color:var(--mut)">${seenTxt(o)}</div></div><button class="ib" id="sc" title="Секретный чат">${getSecretRaw(oid)?'🔒':'🔓'}</button><button class="ib" id="dc">🗑</button></div><div class="body">${o.scam?'<div class="warn">⚠️ Пользователь отмечен как СКАМ. Не переводите деньги и не сообщайте данные.</div>':''}${o.fake?'<div class="warn">🎭 Аккаунт отмечен как ФЕЙК.</div>':''}<div id="strangerInfo"></div><div class="msgs" id="ms"></div></div>
  <div id="gp" style="display:none;padding:10px;border-top:1px solid var(--th);max-height:42vh;overflow:auto"></div>
  <div class="bar"><label class="ib" id="im" for="fl">📎</label><button class="ib" id="gf">🎁</button><input id="tx" placeholder="Сообщение"><button class="ib" id="mic">🎤</button><button class="pr" id="sd">➤</button></div><input type="file" id="fl" accept="image/*,video/*,audio/*,.pdf,.txt,.zip,.doc,.docx" hidden>`;
  let secretMode=!!getSecretRaw(oid);
@@ -334,6 +335,11 @@ async function chat(oid){clean();delete cache[oid];await loadGifts();let o=await
    const el=$('#ms');if(!el)return;
    const ss=await db.collection('msgs').where('chat','==',k).get();
    const ms=ss.docs.map(d=>({...d.data(),id:d.id})).sort((a,b)=>a.ts-b.ts);
+   const stranger=!o.bot&&ms.some(m=>m.a===oid)&&!ms.some(m=>m.a===me.id);
+   const si=$('#strangerInfo');
+   if(si){
+     si.innerHTML=stranger?`<div class="warn" style="text-align:left;margin:4px 0 10px"><b>👤 Незнакомый аккаунт</b><br><span class="note" style="display:block;margin-top:4px;color:inherit;opacity:.85">📅 Дата регистрации: ${o.ts?new Date(o.ts).toLocaleDateString(): 'неизвестна'}<br>🛒 Аккаунт куплен: ${isPurchasedUser(o)?'Да':'Нет'}</span></div>`:'';
+   }
    const raw=getSecretRaw(oid);
    const html=[];
    for(const m of ms){
