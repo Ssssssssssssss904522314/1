@@ -178,14 +178,12 @@ const isPurchasedUser=u=>!!(u&&((u.purchased===true)||(u.bio==='Покупной
 // ---- auth ----
 function auth(mode='in',add){
  const reg=mode==='up',prev=add?me:null;
- let regPending=null;
  app.innerHTML=`<div class="body c" style="padding-top:${add?'4vh':'12vh'}">${add?'<div style="text-align:left"><button class="ib" id="bk">← Назад</button></div>':''}<h1 style="font-size:34px;margin:0;color:var(--pr)">EKOOOL</h1><p style="color:var(--mut)">${add?'Добавить аккаунт':'Мессенджер'}</p>
- ${reg?'<input class="t" id="nm" placeholder="Ваше имя"><input class="t" id="un" placeholder="Юзернейм (английские буквы)"><input class="t" id="em" type="email" autocomplete="email" placeholder="Электронная почта">':'<input class="t" id="id" placeholder="Юзернейм или номер (+777…)">'}
+ ${reg?'<input class="t" id="nm" placeholder="Ваше имя"><input class="t" id="un" placeholder="Юзернейм (английские буквы)">':'<input class="t" id="id" placeholder="Юзернейм или номер (+777…)">'}
  <input class="t" id="pw" type="password" placeholder="Пароль (от 6 символов)">
- ${reg?'<input class="t" id="ec" inputmode="numeric" maxlength="6" autocomplete="one-time-code" placeholder="Код из письма" style="display:none">':''}
  <div class="err" id="er"></div>
- <button class="pr" style="width:100%" id="go">${reg?'Получить код':'Войти'}</button><p><a href="#" id="sw" style="color:var(--pr)">${reg?'Уже есть аккаунт? Войти':'Нет аккаунта? Регистрация'}</a></p>
- ${isAdmin?'<p><a href="#" id="adl" style="color:var(--mut)">Админ-панель</a></p>':''}<div class="note">${reg?'На почту придёт код подтверждения. Без правильного кода аккаунт не создастся.':'Юзернейм — ваш публичный адрес (английские буквы, цифры и _). Для входа нужны юзернейм и пароль.'}</div></div>`;
+ <button class="pr" style="width:100%" id="go">${reg?'Создать аккаунт':'Войти'}</button><p><a href="#" id="sw" style="color:var(--pr)">${reg?'Уже есть аккаунт? Войти':'Нет аккаунта? Регистрация'}</a></p>
+ ${isAdmin?'<p><a href="#" id="adl" style="color:var(--mut)">Админ-панель</a></p>':''}<div class="note">${reg?'Регистрация без электронной почты. Нужны только имя, юзернейм и пароль.':'Юзернейм — ваш публичный адрес. Для входа нужны юзернейм и пароль.'}</div></div>`;
  $('#sw').onclick=e=>{e.preventDefault();auth(reg?'in':'up',add)};if(add)$('#bk').onclick=settings;
  if($('#adl'))$('#adl').onclick=e=>{e.preventDefault();admin()};
  $('#go').onclick=async()=>{
@@ -196,8 +194,7 @@ function auth(mode='in',add){
        const f=await findUser($('#id').value,true);if(!f)return er.textContent='Неверный юзернейм или пароль';
        if(!f.passHash){const salt=genSalt(),ph=await hp(pw,salt);await db.doc('users/'+f.id).update({salt,passHash:ph});f.salt=salt;f.passHash=ph}
        else if(f.passHash!==await hp(pw,f.salt)){await botMsg(f.id,'⚠️ Попытка входа в ваш аккаунт с неверным паролем.\\nВремя: '+new Date().toLocaleString());return er.textContent='Неверный юзернейм или пароль'}
-       me=f;
-       const bb=bad(me);if(bb)return blocked(bb);
+       me=f;const bb=bad(me);if(bb)return blocked(bb);
        try{localStorage.ekid=me.id;localStorage.ekproof=JSON.stringify({id:me.id,passHash:me.passHash})}catch(e){}
        sessionLogin(me.id,me.passHash).catch(()=>{});
        if(add&&prev&&prev.id!==me.id)await botMsg(prev.id,'➕ На этом устройстве добавлен аккаунт @'+(me.username||me.id)+'.');
@@ -206,35 +203,19 @@ function auth(mode='in',add){
      }catch(e){return er.textContent='Ошибка: '+(e.message||e.code)}
    }
    try{
-     const nm=$('#nm').value.trim(),un=$('#un').value.trim().toLowerCase().replace(/^@/,''),email=String($('#em').value||'').trim().toLowerCase();
+     const nm=$('#nm').value.trim(),un=$('#un').value.trim().toLowerCase().replace(/^@/,'');
      if(!nm)return er.textContent='Введите имя';
      const ue=uerr(un);if(ue)return er.textContent=ue;
-     if(!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/i.test(email))return er.textContent='Введите корректную почту';
      if((await db.doc('usernames/'+un).get()).exists)return er.textContent='Юзернейм занят';
-     const codeEl=$('#ec');
-     if(!regPending){
-       const r=await fetch('/api/auth/register/start',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email})});
-       const x=await r.json().catch(()=>({}));
-       if(!r.ok)return er.textContent=x.error||'Не удалось отправить код';
-       regPending={ticket:x.ticket,email,name:nm,username:un,password:pw};
-       codeEl.style.display='block';codeEl.focus();$('#go').textContent='Подтвердить и создать аккаунт';er.textContent='Код отправлен на '+email;
-       return;
-     }
-     if($('#em').value.trim().toLowerCase()!==regPending.email||un!==regPending.username||nm!==regPending.name||pw!==regPending.password){
-       regPending={...regPending,email,name:nm,username:un,password:pw};
-     }
-     const code=String(codeEl.value||'').trim();
-     if(!/^\\d{6}$/.test(code))return er.textContent='Введите 6-значный код из письма';
-     $('#go').disabled=true;er.textContent='Проверяем код…';
-     const rr=await fetch('/api/auth/register/complete',{method:'POST',headers:{'Content-Type':'application/json'},credentials:'include',body:JSON.stringify({...regPending,code})});
+     $('#go').disabled=true;er.textContent='Создаём аккаунт…';
+     const rr=await fetch('/api/auth/register/complete',{method:'POST',headers:{'Content-Type':'application/json'},credentials:'include',body:JSON.stringify({name:nm,username:un,password:pw})});
      const xx=await rr.json().catch(()=>({}));$('#go').disabled=false;
      if(!rr.ok)return er.textContent=xx.error||'Не удалось зарегистрировать аккаунт';
-     const s=await db.doc('users/'+xx.id).get();
-     if(!s.exists)return er.textContent='Аккаунт создан, но не удалось загрузить профиль';
-     me={id:xx.id,...s.data()};
+     const ss=await db.doc('users/'+xx.id).get();
+     if(!ss.exists)return er.textContent='Аккаунт создан, но не удалось загрузить профиль';
+     me={id:xx.id,...ss.data()};
      try{localStorage.ekid=me.id;localStorage.ekproof=JSON.stringify({id:me.id,passHash:me.passHash})}catch(e){}
-     cache={};regPending=null;
-     if(add&&prev&&prev.id!==me.id){try{await botMsg(me.id,'🆕 Зарегистрирован новый аккаунт @'+(me.username||me.id)+'. Он добавлен на это устройство.')}catch(e){}}
+     cache={};if(add&&prev&&prev.id!==me.id){try{await botMsg(me.id,'🆕 Зарегистрирован новый аккаунт @'+(me.username||me.id)+'. Он добавлен на это устройство.')}catch(e){}}
      start();
    }catch(e){$('#go').disabled=false;er.textContent='Ошибка: '+(e.message||e.code)}
  };
@@ -442,7 +423,18 @@ function appTheme(){
    appTheme();
  });
 }
-function start(){applyAppTheme();addAcc(me.id);loadGifts();beat();grantCheck().catch(()=>{});me.username?home():needUn()}
+async function claimTelegramLink(){
+ const token=new URLSearchParams(location.search).get('telegram_link');
+ if(!token||!me?.id)return;
+ try{
+  const r=await fetch('/api/telegram/link/claim',{method:'POST',headers:{'Content-Type':'application/json'},credentials:'include',body:JSON.stringify({token})});
+  const x=await r.json().catch(()=>({}));
+  if(r.ok){me.telegramLinkedAt=Date.now();toast('✅ Telegram успешно привязан к EKOOOL');}
+  else if(x.error)toast('⚠️ '+x.error);
+ }catch(e){}
+ try{history.replaceState({},document.title,location.pathname+location.hash)}catch(e){}
+}
+function start(){applyAppTheme();addAcc(me.id);loadGifts();beat();grantCheck().catch(()=>{});claimTelegramLink().catch(()=>{});me.username?home():needUn():needUn()}
 async function setUsername(raw){const un=raw.trim().toLowerCase().replace(/^@/,''),e=uerr(un);if(e)return e;if(un===me.username)return'';
  if((await db.doc('usernames/'+un).get()).exists)return'Юзернейм занят';await db.doc('usernames/'+un).set({uid:me.id});
  if(me.username)await db.doc('usernames/'+me.username).delete();await db.doc('users/'+me.id).update({username:un});me.username=un;cache={};return''}
