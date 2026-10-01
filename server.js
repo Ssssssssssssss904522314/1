@@ -3,14 +3,19 @@ const fs=require('fs');
 const path=require('path');
 const crypto=require('crypto');
 const {Pool}=require('pg');
+const nodemailer=require('nodemailer');
 
 const app=express();
 const PORT=process.env.PORT||10000;
 const ADMIN_PASSWORD=process.env.ADMIN_PASSWORD||'';
 const GROQ_API_KEY=process.env.GROQ_API_KEY||'';
 const GROQ_MODEL=process.env.GROQ_MODEL||'openai/gpt-oss-20b';
-const RESEND_API_KEY=String(process.env.RESEND_API_KEY||'').trim();
-const RESEND_FROM=String(process.env.RESEND_FROM||'').trim()||'EKOOOL <onboarding@resend.dev>';
+const SMTP_HOST=String(process.env.SMTP_HOST||'smtp.gmail.com').trim();
+const SMTP_PORT=Number(process.env.SMTP_PORT||465);
+const SMTP_USER=String(process.env.SMTP_USER||'').trim();
+const SMTP_PASS=String(process.env.SMTP_PASS||'').trim();
+const SMTP_FROM=String(process.env.SMTP_FROM||'').trim()||SMTP_USER;
+const smtpConfigured=!!(SMTP_USER&&SMTP_PASS&&SMTP_FROM);
 const EMAIL_CODE_TTL=10*60*1000;
 const EMAIL_CODE_MAX_ATTEMPTS=5;
 const emailRate=new Map();
@@ -218,29 +223,19 @@ function emailRateAllowed(key){
   a.n++;emailRate.set(key,a);return true;
 }
 async function sendVerificationEmail(email,code){
-  if(!RESEND_API_KEY)throw new Error('RESEND_API_KEY не настроен на сервере');
-  const r=await fetch('https://api.resend.com/emails',{
-    method:'POST',
-    headers:{'Content-Type':'application/json','Authorization':'Bearer '+RESEND_API_KEY},
-    body:JSON.stringify({
-      from:RESEND_FROM,
-      to:[email],
-      subject:'Код подтверждения регистрации EKOOOL',
-      html:'<div style="font-family:Arial,sans-serif;max-width:520px;margin:0 auto;padding:24px;color:#131826"><h2>EKOOOL</h2><p>Ваш код подтверждения регистрации:</p><div style="font-size:34px;font-weight:800;letter-spacing:8px;margin:20px 0">'+code+'</div><p>Код действует 10 минут. Если вы не регистрируетесь в EKOOOL, просто проигнорируйте это письмо.</p></div>'
-    })
-  });
-  const x=await r.json().catch(()=>({}));
-  if(!r.ok)throw new Error(x?.message||x?.error?.message||'Не удалось отправить письмо');
+  if(!smtpConfigured)throw new Error('SMTP-почта не настроена на сервере');
+  const transporter=nodemailer.createTransport({host:SMTP_HOST,port:SMTP_PORT,secure:SMTP_PORT===465,auth:{user:SMTP_USER,pass:SMTP_PASS}});
+  await transporter.sendMail({from:SMTP_FROM,to:email,subject:'Код подтверждения регистрации EKOOOL',text:'Ваш код подтверждения регистрации EKOOOL: '+code+'\n\nКод действует 10 минут. Если вы не регистрируетесь в EKOOOL, просто проигнорируйте это письмо.',html:'<div style="font-family:Arial,sans-serif;max-width:520px;margin:0 auto;padding:24px;color:#131826"><h2>EKOOOL</h2><p>Ваш код подтверждения регистрации:</p><div style="font-size:34px;font-weight:800;letter-spacing:8px;margin:20px 0">'+code+'</div><p>Код действует 10 минут. Если вы не регистрируетесь в EKOOOL, просто проигнорируйте это письмо.</p></div>'});
 }
 app.get('/api/auth/email-status',async(req,res)=>{
-  res.json({configured:!!RESEND_API_KEY,fromConfigured:!!process.env.RESEND_FROM,defaultFrom:RESEND_FROM});
+  res.json({configured:smtpConfigured,host:SMTP_HOST,port:SMTP_PORT,userConfigured:!!SMTP_USER,fromConfigured:!!SMTP_FROM});
 });
 
 app.post('/api/auth/register/start',async(req,res)=>{
   try{
     const email=normalizeEmail(req.body?.email);
     if(!validEmail(email))return res.status(400).json({error:'Введите корректную почту',code:'invalid_email'});
-    if(!RESEND_API_KEY)return res.status(503).json({error:'RESEND_API_KEY не настроен на сервере',code:'email_not_configured'});
+    if(!smtpConfigured)return res.status(503).json({error:'SMTP-почта не настроена на сервере',code:'email_not_configured'});
     const key=email+'|'+String(req.ip||'');
     if(!emailRateAllowed(key))return res.status(429).json({error:'Слишком много запросов кода. Попробуйте позже.',code:'rate_limited'});
     const ticket=crypto.randomBytes(24).toString('hex');
