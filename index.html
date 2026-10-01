@@ -618,7 +618,7 @@ function confetti(){const d=document.createElement('div');d.className='cel';d.st
  d.innerHTML=h;document.body.appendChild(d);setTimeout(()=>d.remove(),2500)}
 // ---- premium ----
 function canAdmin(){return isAdmin||!!(me&&me.admin===true&&!bad(me))}
-function isPrem(u){return !!u&&u.premiumUntil>Date.now()}
+function isPrem(u){return !!u&&(u.premiumForever===true||u.premiumUntil>Date.now())}
 const PLANS=[{t:'1 месяц',d:30,c:1200},{t:'3 месяца',d:90,c:3400},{t:'1 год',d:360,c:5555}];
 const THEMES=[{n:'Океан',bg:'#e6f0ff',me:'#3b6cff'},{n:'Мята',bg:'#e3f7ee',me:'#12a37a'},{n:'Закат',bg:'#fff0e6',me:'#f2622b'},{n:'Ночь',bg:'#151a2e',me:'#7c5cff'},{n:'Роза',bg:'#ffe9f1',me:'#e0457b'}];
 async function grantCheck(){const s=await db.doc('users/'+me.id).get(),u=s.data(),now=Date.now();if(!u||!(u.premiumUntil>now)||!u.nextGrant)return;
