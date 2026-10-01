@@ -483,11 +483,26 @@ async function tgServicePanel(chatId){
     [{text:'🔄 Обновить панель',callback_data:'service_panel'}]
   ]}});
 }
-async function tgPublishToken(code,amount,uses){
+async async function tgPublishToken(code,amount,uses){
   if(!TELEGRAM_SERVICE_CHAT_ID)return false;
   const auto=await getDoc('config','telegram_auto_publish');
   if(!auto?.enabled)return false;
-  await tg('sendMessage',{chat_id:TELEGRAM_SERVICE_CHAT_ID,text:'🎟 НОВЫЙ ТОКЕН EKOOOL\\n\\n🔑 '+code+'\\n⭐ Номинал: '+amount+' звёзд\\n♻️ Активаций: '+uses+'\\n\\nАктивировать: /token '+code});
+  const text=[
+    '🎟️ НОВЫЙ ТОКЕН EKOOOL',
+    '',
+    '🔑 Код: '+code,
+    '⭐ Номинал: '+amount+' ⭐',
+    '♻️ Активаций: '+uses,
+    '',
+    '🎁 Активируй токен в боте:',
+    '/token '+code
+  ].join('\\n');
+  await tg('sendMessage',{
+    chat_id:TELEGRAM_SERVICE_CHAT_ID,
+    text,
+    parse_mode:'HTML',
+    disable_web_page_preview:true
+  });
   return true;
 }
 
