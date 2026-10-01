@@ -837,7 +837,7 @@ app.post('/api/telegram/coins-webhook',async(req,res)=>{
       const us=await getDoc('users',uid);
       if(!us)return ctg('sendMessage',{chat_id:msg.chat.id,text:'❌ Аккаунт не найден. Обратитесь в поддержку.'});
       const balance=Number(us.coins||0)+coins;
-      await putDoc('users',uid,{...us,coins:balance});
+      await patchDoc('users',uid,{coins:balance});
       await putDoc('txs','coinbuy_'+Date.now()+'_'+Math.random().toString(36).slice(2,7),{uid,ts:Date.now(),amt:coins,note:'Покупка ЭКОкоинов через Telegram Stars: '+stars+' ⭐'});
       await putDoc('telegram_coins_payments',charge,{chatId:msg.chat.id,uid,coins,stars,payload:p.invoice_payload,chargeId:charge,ts:Date.now()});
       await ctg('sendMessage',{chat_id:msg.chat.id,text:'✅ Покупка завершена!\n\n🪙 Начислено: '+coins+' ЭКОкоинов\n💰 Новый баланс: '+balance+' 🪙',reply_markup:coinsKeyboard()});
