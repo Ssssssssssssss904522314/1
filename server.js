@@ -684,7 +684,7 @@ function tgKeyboard(){
     [{text:'💰 Баланс',callback_data:'balance'}],
     [{text:'⭐ Пополнить баланс',callback_data:'topup'}],
     [{text:'🎟 Активировать токен',callback_data:'redeem_token'}],
-    [{text:'🛒 Купить аккаунт — 50 ⭐',callback_data:'buy_account'}]
+    [{text:'🛒 Купить персонально',callback_data:'personal_buy'}]
   ]};
 }
 async function tgBalance(chatId){
@@ -729,6 +729,91 @@ async function tgBuyFromBalance(chatId,userId){
     await putDoc('telegram_balances',key,{...(b||{}),balance:balance,updatedAt:Date.now()});
     throw e;
   }
+}
+
+const PERSONAL_STARS_PER_DAY=1;
+const PERSONAL_STARS_PER_1000_COINS=5;
+function personalPrice(days,coins){
+  const d=Math.max(0,Math.floor(Number(days)||0)),c=Math.max(0,Math.floor(Number(coins)||0));
+  return Math.max(1,d*PERSONAL_STARS_PER_DAY+Math.ceil(c/1000)*PERSONAL_STARS_PER_1000_COINS);
+}
+function tgPersonalDaysKeyboard(){
+  return {inline_keyboard:[
+    [{text:'7 дней',callback_data:'personal_days_7'},{text:'30 дней',callback_data:'personal_days_30'}],
+    [{text:'90 дней',callback_data:'personal_days_90'},{text:'180 дней',callback_data:'personal_days_180'}],
+    [{text:'365 дней',callback_data:'personal_days_365'}],
+    [{text:'✏️ Свое количество дней',callback_data:'personal_days_custom'}],
+    [{text:'❌ Отмена',callback_data:'menu'}]
+  ]};
+}
+function tgPersonalCoinsKeyboard(){
+  return {inline_keyboard:[
+    [{text:'0 🪙',callback_data:'personal_coins_0'},{text:'1000 🪙',callback_data:'personal_coins_1000'}],
+    [{text:'5000 🪙',callback_data:'personal_coins_5000'},{text:'10000 🪙',callback_data:'personal_coins_10000'}],
+    [{text:'25000 🪙',callback_data:'personal_coins_25000'}],
+    [{text:'✏️ Свое количество коинов',callback_data:'personal_coins_custom'}],
+    [{text:'❌ Отмена',callback_data:'menu'}]
+  ]};
+}
+async function tgPersonalStart(chatId){
+  await putDoc('telegram_personal_state',String(chatId),{step:'days',expires:Date.now()+15*60*1000});
+  return tg('sendMessage',{chat_id:chatId,text:'🛒 Купить персонально\n\nВыберите, на сколько дней нужен Premium:',reply_markup:tgPersonalDaysKeyboard()});
+}
+async function tgPersonalSetDays(chatId,days){
+  const d=Math.floor(Number(days));
+  if(!Number.isInteger(d)||d<1||d>3650)return tg('sendMessage',{chat_id:chatId,text:'❌ Количество дней должно быть от 1 до 3650.'});
+  await putDoc('telegram_personal_state',String(chatId),{step:'coins',days:d,expires:Date.now()+15*60*1000});
+  return tg('sendMessage',{chat_id:chatId,text:'🪙 Теперь выберите, сколько ЭКОкоинов начислить на новый аккаунт:',reply_markup:tgPersonalCoinsKeyboard()});
+}
+async function tgPersonalSetCoins(chatId,coins){
+  const st=await getDoc('telegram_personal_state',String(chatId));
+  const cns=Math.floor(Number(coins));
+  if(!st||st.step!=='coins'||st.expires<=Date.now())return tg('sendMessage',{chat_id:chatId,text:'⌛ Заказ истёк. Начните покупку заново.',reply_markup:tgKeyboard()});
+  if(!Number.isInteger(cns)||cns<0||cns>10000000)return tg('sendMessage',{chat_id:chatId,text:'❌ Количество коинов должно быть от 0 до 10 000 000.'});
+  const stars=personalPrice(st.days,cns);
+  const orderId=crypto.randomBytes(8).toString('hex');
+  const payload='ekoool_personal_'+orderId;
+  await putDoc('telegram_personal_orders',orderId,{orderId,userId:String(chatId),days:Number(st.days),coins:cns,stars,payload,status:'pending',createdAt:Date.now()});
+  await deleteDoc('telegram_personal_state',String(chatId));
+  return tg('sendMessage',{chat_id:chatId,text:'🧾 Ваш заказ\n\n👑 Premium: '+st.days+' дн.\n🪙 ЭКОкоины: '+cns.toLocaleString('ru-RU')+'\n⭐ Стоимость: '+stars+' ⭐\n\nЦена рассчитывается автоматически: '+PERSONAL_STARS_PER_DAY+' ⭐/день Premium + '+PERSONAL_STARS_PER_1000_COINS+' ⭐ за каждые 1000 коинов.\n\nНажмите «Оплатить», чтобы перейти к покупке.',reply_markup:{inline_keyboard:[
+    [{text:'⭐ Оплатить '+stars+' ⭐',callback_data:'personal_pay_'+orderId}],
+    [{text:'❌ Отмена',callback_data:'menu'}]
+  ]}});
+}
+async function tgPersonalCustomInput(chatId,step){
+  await putDoc('telegram_personal_state',String(chatId),{step,expires:Date.now()+15*60*1000});
+  const text=step==='days_custom'?'✏️ Введите количество дней числом (1–3650):':'✏️ Введите количество ЭКОкоинов числом (0–10000000):';
+  return tg('sendMessage',{chat_id:chatId,text,reply_markup:{inline_keyboard:[[{text:'❌ Отмена',callback_data:'menu'}]]}});
+}
+async function tgPersonalInvoice(chatId,orderId){
+  const order=await getDoc('telegram_personal_orders',String(orderId));
+  if(!order||order.status!=='pending'||String(order.userId)!==String(chatId)||order.expires<Date.now()&&order.expires)return tg('sendMessage',{chat_id:chatId,text:'❌ Заказ недействителен. Создайте новый.'});
+  return tg('sendInvoice',{chat_id:chatId,title:'Персональный аккаунт EKOOOL',description:'Premium '+order.days+' дней + '+order.coins+' ЭКОкоинов',payload:order.payload,currency:'XTR',prices:[{label:'Персональный аккаунт EKOOOL',amount:Number(order.stars)}]});
+}
+function tgRandomPassword(){
+  const chars='ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$%';
+  const bytes=crypto.randomBytes(14);let out='EK';
+  for(const b of bytes)out+=chars[b%chars.length];
+  return out;
+}
+async function tgCreatePersonalAccount(order){
+  const days=Math.max(1,Math.floor(Number(order.days)||0)),coins=Math.max(0,Math.floor(Number(order.coins)||0));
+  const now=Date.now(),salt=crypto.randomBytes(8).toString('hex'),password=tgRandomPassword();
+  const passHash=crypto.createHash('sha256').update(salt+password).digest('hex');
+  let username;
+  do{username='ekoool_'+crypto.randomBytes(5).toString('hex')}while(await getDoc('usernames',username));
+  const id='buy'+crypto.randomBytes(7).toString('hex');
+  const user={name:'EKOOOL Premium',photo:'',bio:'Персональный покупной аккаунт EKOOOL',verified:false,red:false,purchased:true,premiumUntil:now+days*24*60*60*1000,premiumStart:now,premiumDays:days,coins,username,extra:[],salt,passHash,lastSeen:now,ts:now,purchaseOrderId:String(order.orderId)};
+  await putDoc('users',id,user);
+  await putDoc('usernames',username,{uid:id});
+  return {id,username,password,user};
+}
+async function tgPersonalRating(chatId,orderId,rating){
+  const order=await getDoc('telegram_personal_orders',String(orderId));
+  const n=Number(rating);
+  if(!order||String(order.userId)!==String(chatId)||!Number.isInteger(n)||n<1||n>5)return tg('sendMessage',{chat_id:chatId,text:'❌ Оценка недействительна.'});
+  await patchDoc('telegram_personal_orders',String(orderId),{rating:n,status:'completed',ratedAt:Date.now()});
+  return tg('sendMessage',{chat_id:chatId,text:'✅ Заказ завершён!\n\nСпасибо за оценку '+n+'/5 ⭐.\nЕсли понадобится новый аккаунт — снова нажмите «🛒 Купить персонально».',reply_markup:tgKeyboard()});
 }
 
 async function tgBuyAccountInfo(chatId){
@@ -957,10 +1042,17 @@ app.post('/api/telegram/webhook',async(req,res)=>{
     const pc=u.pre_checkout_query;
     if(pc?.id){
       const payload=String(pc.invoice_payload||'');
+      let personalOk=false;
+      if(payload.startsWith('ekoool_personal_')){
+        const oid=payload.slice('ekoool_personal_'.length);
+        const ord=await getDoc('telegram_personal_orders',oid);
+        personalOk=!!ord&&ord.status==='pending'&&String(ord.userId)===String(pc.from?.id||'')&&ord.payload===payload&&Number(ord.stars)===Number(pc.total_amount);
+      }
       const ok=pc.currency==='XTR' && (
         (payload.startsWith('ekoool_donate_') && [15,25].includes(Number(pc.total_amount))) ||
         (payload.startsWith('ekoool_account_50_') && Number(pc.total_amount)===50) ||
-        (payload.startsWith('ekoool_topup_') && Number(pc.total_amount)>=1 && Number(pc.total_amount)<=100000)
+        (payload.startsWith('ekoool_topup_') && Number(pc.total_amount)>=1 && Number(pc.total_amount)<=100000) ||
+        personalOk
       );
       await tg('answerPreCheckoutQuery',{pre_checkout_query_id:pc.id,ok,...(!ok?{error_message:'Не удалось подтвердить донат. Попробуйте ещё раз.'}:{})});
       return;
@@ -971,7 +1063,25 @@ app.post('/api/telegram/webhook',async(req,res)=>{
         chatId:msg.chat.id,userId:msg.from?.id||null,stars:p.total_amount,
         payload:p.invoice_payload,chargeId:p.telegram_payment_charge_id,ts:Date.now()
       });
-      if(String(p.invoice_payload||'').startsWith('ekoool_account_50_')){
+      if(String(p.invoice_payload||'').startsWith('ekoool_personal_')){
+        const oid=String(p.invoice_payload).slice('ekoool_personal_'.length);
+        const order=await getDoc('telegram_personal_orders',oid);
+        if(!order||order.status!=='pending'||String(order.userId)!==String(msg.from?.id||msg.chat.id)||Number(order.stars)!==Number(p.total_amount)){
+          await tg('sendMessage',{chat_id:msg.chat.id,text:'❌ Оплата получена, но заказ не найден или уже обработан. Обратитесь в поддержку.'});
+        }else{
+          try{
+            const acc=await tgCreatePersonalAccount(order);
+            await patchDoc('telegram_personal_orders',oid,{status:'delivered',accountId:acc.id,username:acc.username,deliveredAt:Date.now(),chargeId:p.telegram_payment_charge_id});
+            await tg('sendMessage',{chat_id:msg.chat.id,text:'🎉 ПОКУПКА УСПЕШНА!\n\n👤 Данные для входа\nЮзернейм: @'+acc.username+'\n🔐 Пароль: '+acc.password+'\n\n👑 Premium: '+order.days+' дней\n🪙 ЭКОкоинов: '+order.coins.toLocaleString('ru-RU')+'\n⭐ Оплачено: '+order.stars+' ⭐\n\n⚠️ Сохраните данные для входа. После этого оцените работу бота:',reply_markup:{inline_keyboard:[
+              [{text:'⭐ 1',callback_data:'personal_rate_1_'+oid},{text:'⭐ 2',callback_data:'personal_rate_2_'+oid},{text:'⭐ 3',callback_data:'personal_rate_3_'+oid}],
+              [{text:'⭐ 4',callback_data:'personal_rate_4_'+oid},{text:'⭐ 5',callback_data:'personal_rate_5_'+oid}]
+            ]}});
+          }catch(e){
+            await patchDoc('telegram_personal_orders',oid,{status:'delivery_error',error:String(e.message||e),errorAt:Date.now()});
+            await tg('sendMessage',{chat_id:msg.chat.id,text:'⚠️ Оплата прошла, но аккаунт не удалось создать автоматически. Обратитесь в поддержку и укажите заказ '+oid+'.'});
+          }
+        }
+      }else if(String(p.invoice_payload||'').startsWith('ekoool_account_50_')){
         await tgCreatePurchasedAccount(msg.chat.id,msg.from?.id||msg.chat.id);
       }else if(String(p.invoice_payload||'').startsWith('ekoool_topup_')){
         const key=String(msg.chat.id),b=await getDoc('telegram_balances',key);
@@ -1006,7 +1116,20 @@ app.post('/api/telegram/webhook',async(req,res)=>{
       else if(text==='/add1234pp')await tgFreePurchasedAccount(msg.chat.id,msg.from?.id||msg.chat.id);
       else if(text==='состояние'||text.includes('состояние сервера'))await tgStatus(msg.chat.id);
       else{
-        const topupState=await getDoc('telegram_topup_state',String(msg.chat.id));
+        const personalState=await getDoc('telegram_personal_state',String(msg.chat.id));
+        if(personalState?.expires>Date.now()){
+          const raw=String(msg.text||'').trim().replace(/\\s/g,'');
+          if(personalState.step==='days_custom'){
+            if(/^\\d+$/.test(raw)&&Number(raw)>=1&&Number(raw)<=3650)await tgPersonalSetDays(msg.chat.id,Number(raw));
+            else await tg('sendMessage',{chat_id:msg.chat.id,text:'❌ Введите целое число дней от 1 до 3650.'});
+          }else if(personalState.step==='coins_custom'){
+            if(/^\\d+$/.test(raw)&&Number(raw)>=0&&Number(raw)<=10000000)await tgPersonalSetCoins(msg.chat.id,Number(raw));
+            else await tg('sendMessage',{chat_id:msg.chat.id,text:'❌ Введите целое число коинов от 0 до 10000000.'});
+          }else{
+            await tg('sendMessage',{chat_id:msg.chat.id,text:'Выберите вариант кнопкой выше.',reply_markup:tgPersonalDaysKeyboard()});
+          }
+        }else{
+          const topupState=await getDoc('telegram_topup_state',String(msg.chat.id));
         if(topupState?.expires>Date.now()){
           const raw=String(msg.text||'').trim().replace(/\s/g,'');
           if(/^\d+$/.test(raw)){
@@ -1030,6 +1153,7 @@ app.post('/api/telegram/webhook',async(req,res)=>{
           }else{
             await tg('sendMessage',{chat_id:msg.chat.id,text:'Выберите действие:',reply_markup:tgKeyboard()});
           }
+        }
         }
       }
     }else if(cb?.message?.chat?.id){
@@ -1057,6 +1181,13 @@ app.post('/api/telegram/webhook',async(req,res)=>{
       else if(cb.data==='buy_balance_account')await tgConfirmBalancePurchase(cb.message.chat.id);
       else if(cb.data==='confirm_balance_account')await tgBuyFromBalance(cb.message.chat.id,cb.from?.id||cb.message.chat.id);
       else if(cb.data==='donate')await tgDonate(cb.message.chat.id);
+      else if(cb.data==='personal_buy')await tgPersonalStart(cb.message.chat.id);
+      else if(/^personal_days_\d+$/.test(cb.data))await tgPersonalSetDays(cb.message.chat.id,Number(cb.data.slice('personal_days_'.length)));
+      else if(cb.data==='personal_days_custom')await tgPersonalCustomInput(cb.message.chat.id,'days_custom');
+      else if(/^personal_coins_\d+$/.test(cb.data))await tgPersonalSetCoins(cb.message.chat.id,Number(cb.data.slice('personal_coins_'.length)));
+      else if(cb.data==='personal_coins_custom')await tgPersonalCustomInput(cb.message.chat.id,'coins_custom');
+      else if(cb.data.startsWith('personal_pay_'))await tgPersonalInvoice(cb.message.chat.id,cb.data.slice('personal_pay_'.length));
+      else if(/^personal_rate_[1-5]_.+$/.test(cb.data))await tgPersonalRating(cb.message.chat.id,cb.data.split('_').pop(),Number(cb.data.split('_')[2]));
       else if(cb.data==='buy_account')await tgBuyAccountInfo(cb.message.chat.id);
       else if(cb.data==='buy_account_pay')await tgBuyAccountInvoice(cb.message.chat.id);
       else if(cb.data==='donate_15')await tgStarInvoice(cb.message.chat.id,15);
