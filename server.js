@@ -483,7 +483,7 @@ async function tgServicePanel(chatId){
     [{text:'🔄 Обновить панель',callback_data:'service_panel'}]
   ]}});
 }
-async async function tgPublishToken(code,amount,uses){
+async function tgPublishToken(code,amount,uses){
   if(!TELEGRAM_SERVICE_CHAT_ID)return false;
   const auto=await getDoc('config','telegram_auto_publish');
   if(!auto?.enabled)return false;
