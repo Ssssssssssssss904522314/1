@@ -365,6 +365,86 @@ function botReply(id,text){
   return putDoc('msgs',id,text);
 }
 
+
+function svgWeatherCard(w){
+  const escSvg=v=>String(v??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  const icon=c=>({0:'☀️',1:'🌤️',2:'⛅',3:'☁️',45:'🌫️',48:'🌫️',51:'🌦️',53:'🌦️',55:'🌧️',56:'🌧️',57:'🌧️',61:'🌧️',63:'🌧️',65:'🌧️',66:'🌧️',67:'🌧️',71:'🌨️',73:'🌨️',75:'❄️',77:'❄️',80:'🌦️',81:'🌧️',82:'⛈️',85:'🌨️',86:'❄️',95:'⛈️',96:'⛈️',99:'⛈️'})[Number(c)]||'🌡️';
+  const days=(w.daily?.time||[]).slice(0,5);
+  const cols=days.map((d,i)=>{
+    const dt=new Date(d+'T00:00:00');
+    const label=i===0?'Сегодня':dt.toLocaleDateString('ru-RU',{weekday:'short',day:'2-digit',month:'2-digit'});
+    const x=135+i*145;
+    return '<g transform="translate('+x+',0)"><text x="0" y="275" text-anchor="middle" font-size="17" font-family="Arial" fill="#eef1f8">'+escSvg(label)+'</text><text x="0" y="315" text-anchor="middle" font-size="34">'+icon(w.daily.weather_code[i])+'</text><text x="0" y="355" text-anchor="middle" font-size="20" font-family="Arial" font-weight="700" fill="#fff">'+Math.round(w.daily.temperature_2m_max[i])+'°</text><text x="0" y="383" text-anchor="middle" font-size="17" font-family="Arial" fill="#aeb7cc">'+Math.round(w.daily.temperature_2m_min[i])+'°</text></g>';
+  }).join('');
+  const cur=w.current||{};
+  const svg='<svg xmlns="http://www.w3.org/2000/svg" width="820" height="430" viewBox="0 0 820 430"><defs><linearGradient id="g" x1="0" x2="1"><stop stop-color="#536dfe"/><stop offset="1" stop-color="#7b4dff"/></linearGradient></defs><rect width="820" height="430" rx="34" fill="url(#g)"/><text x="48" y="60" font-size="26" font-family="Arial" font-weight="700" fill="#fff">☁️ EKOOOL Weather · '+escSvg(w.place)+'</text><text x="48" y="142" font-size="70">'+icon(cur.weather_code)+'</text><text x="145" y="140" font-size="64" font-family="Arial" font-weight="700" fill="#fff">'+Math.round(cur.temperature_2m)+'°C</text><text x="48" y="180" font-size="20" font-family="Arial" fill="#eef1f8">Ощущается '+Math.round(cur.apparent_temperature)+'°C · ветер '+Math.round(cur.wind_speed_10m)+' км/ч</text><line x1="35" y1="220" x2="785" y2="220" stroke="#ffffff55"/><g transform="translate(0,-220)">'+cols+'</g><text x="48" y="410" font-size="13" font-family="Arial" fill="#dbe1f0">Источник прогноза: Open-Meteo</text></svg>';
+  return 'data:image/svg+xml;charset=utf-8,'+encodeURIComponent(svg);
+}
+async function weatherData(city){
+  const g=await fetch('https://geocoding-api.open-meteo.com/v1/search?name='+encodeURIComponent(city)+'&count=1&language=ru&format=json');
+  const gj=await g.json();
+  const place=gj?.results?.[0];
+  if(!place)throw new Error('Город не найден');
+  const u='https://api.open-meteo.com/v1/forecast?latitude='+encodeURIComponent(place.latitude)+'&longitude='+encodeURIComponent(place.longitude)+'&current=temperature_2m,apparent_temperature,weather_code,wind_speed_10m&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max&forecast_days=5&timezone=auto';
+  const r=await fetch(u),x=await r.json();
+  if(!r.ok||x.error)throw new Error(x.reason||'Сервис погоды недоступен');
+  return {...x,place:[place.name,place.country].filter(Boolean).join(', ')};
+}
+async function renderStatus(){
+  const out={ekool:{status:'operational',details:'API отвечает'},database:{status:'operational',details:pool?'PostgreSQL подключён':'локальное хранилище'},ai:{status:GROQ_API_KEY?'configured':'outage',details:GROQ_API_KEY?'GROQ_API_KEY настроен':'GROQ_API_KEY не настроен'},weather:{status:'unknown',details:'проверка...'},render:{status:'unknown',details:'проверка...'},incidents:[]};
+  try{if(pool)await pool.query('SELECT 1');else fileCol('users');out.database={status:'operational',details:pool?'PostgreSQL подключён':'локальное хранилище'};}catch(e){out.database={status:'outage',details:'ошибка подключения к БД'};}
+  try{const r=await fetch('https://api.open-meteo.com/v1/forecast?latitude=52.52&longitude=13.41&current=temperature_2m');out.weather={status:r.ok?'operational':'outage',details:r.ok?'Open-Meteo отвечает':'Open-Meteo не отвечает'};}catch(e){out.weather={status:'outage',details:'Open-Meteo недоступен'};}
+  try{
+    const r=await fetch('https://status.render.com/api/v2/summary.json'),x=await r.json();
+    out.render={status:x?.status?.indicator==='none'?'operational':x?.status?.indicator||'unknown',details:x?.status?.description||'Статус Render неизвестен'};
+    const ir=await fetch('https://status.render.com/api/v2/incidents/unresolved.json'),ix=await ir.json();
+    out.incidents=(ix?.incidents||[]).slice(0,5).map(i=>({name:i.name,status:i.status,impact:i.impact}));
+  }catch(e){out.render={status:'unknown',details:'не удалось получить статус Render'};}
+  return out;
+}
+function statusText(st){
+  const icon=s=>s==='operational'?'🟢':s==='configured'?'🟢':s==='outage'?'🔴':s==='major'?'🔴':s==='minor'?'🟡':s==='critical'?'🔴':'🟡';
+  const rows=[['EKOOOL API',st.ekool],['База данных',st.database],['ИИ Groq',st.ai],['Погода',st.weather],['Render',st.render]];
+  let t='🛠 Состояние серверов EKOOOL\\n\\n'+rows.map(([n,v])=>icon(v.status)+' '+n+' — '+v.details).join('\\n');
+  if(st.incidents.length)t+='\\n\\n⚠️ Текущие инциденты Render:\\n'+st.incidents.map(i=>'• '+i.name+' ('+i.status+', '+i.impact+')').join('\\n');
+  else t+='\\n\\n✅ На странице статуса Render активных инцидентов не обнаружено.';
+  return t+'\\n\\nПроверено: '+new Date().toLocaleString('ru-RU');
+}
+async function botCloudeAI(userText){
+  const prompt='Ты маршрутизатор ИИ для бота @botcloude в мессенджере EKOOOL. Верни ТОЛЬКО JSON без markdown: {"action":"weather"|"status"|"chat","city":"..."}. weather — если пользователь просит погоду/прогноз/температуру/дождь/снег в городе. status — если спрашивает про сбои, неполадки, сервера, Render, EKOOOL или доступность сервисов. chat — обычный вопрос. Если для погоды город не указан, city должен быть пустой строкой.';
+  try{
+    const raw=await openAIText(prompt,[{role:'user',content:userText}]);
+    const m=raw.match(/\{[\s\S]*\}/);if(m){const x=JSON.parse(m[0]);if(['weather','status','chat'].includes(x.action))return x;}
+  }catch(e){}
+  const l=userText.toLowerCase();
+  if(/погод|температур|дожд|снег|ветер|прогноз/.test(l))return{action:'weather',city:''};
+  if(/сервер|неполад|сбой|статус|рендер|render|доступен|лежит/.test(l))return{action:'status',city:''};
+  return{action:'chat',city:''};
+}
+app.get('/api/botcloude/status',async(req,res)=>{try{res.json({ok:true,status:await renderStatus()})}catch(e){res.status(500).json({error:e.message})}});
+app.post('/api/botcloude/message',async(req,res)=>{
+  try{
+    const au=await userAuth(req),userId=String(req.body?.userId||'').trim(),text=String(req.body?.text||'').trim();
+    if(!au||au.id!==userId)return res.status(401).json({error:'Unauthorized'});
+    if(!text)return res.status(400).json({error:'Нужен текст'});
+    const intent=await botCloudeAI(text);
+    if(intent.action==='weather'){
+      if(!intent.city)return res.json({ok:true,text:'🌦️ Напишите город, например: «погода в Амстердаме». Я пришлю текущую погоду и картинку-прогноз.'});
+      try{
+        const w=await weatherData(intent.city);
+        const ai=await openAIText('Ты @botcloude. Коротко и понятно объясни погоду на русском по данным JSON. Не выдумывай значения. Укажи город, текущую температуру, ощущаемую температуру, ветер и краткий прогноз на несколько дней. Без markdown.',[{role:'user',content:JSON.stringify({place:w.place,current:w.current,daily:w.daily})}]);
+        return res.json({ok:true,text:'🌤️ '+ai,image:svgWeatherCard(w),imageName:'forecast.svg'});
+      }catch(e){return res.json({ok:true,text:'Не удалось получить погоду: '+e.message})}
+    }
+    if(intent.action==='status'){
+      const st=await renderStatus();
+      return res.json({ok:true,text:statusText(st)});
+    }
+    const ai=await openAIText('Ты — @botcloude, дружелюбный ИИ-бот мессенджера EKOOOL. Отвечай по делу на языке пользователя. Если вопрос требует текущих данных о погоде или состоянии серверов, скажи пользователю использовать запрос про погоду или статус серверов. Без markdown.',[{role:'user',content:text}]);
+    return res.json({ok:true,text:ai});
+  }catch(e){res.status(500).json({error:e.message||'Ошибка @botcloude'})}
+});
+
 app.post('/api/botnew/message',async(req,res)=>{
   try{
     const au=await userAuth(req);if(!au||au.id!==String(req.body?.userId||''))return res.status(401).json({error:'Unauthorized'});
