@@ -145,7 +145,7 @@ function auth(mode='in',add){const reg=mode==='up',prev=add?me:null;
   if(pw.length<6)return er.textContent='Пароль: минимум 6 символов';
   try{if(reg){const nm=$('#nm').value.trim(),un=$('#un').value.trim().toLowerCase().replace(/^@/,'');if(!nm)return er.textContent='Введите имя';
     const ue=uerr(un);if(ue)return er.textContent=ue;if((await db.doc('usernames/'+un).get()).exists)return er.textContent='Юзернейм занят';
-    const id=genId(),salt=genSalt(),u={name:nm,photo:'',bio:'',verified:false,coins:0,username:un,extra:[],salt,passHash:await hp(pw,salt),lastSeen:Date.now(),ts:Date.now()};
+    const id=genId(),salt=genSalt(),u={name:nm,photo:'',bio:'',verified:false,coins:1000,username:un,extra:[],salt,passHash:await hp(pw,salt),lastSeen:Date.now(),ts:Date.now()};
     await db.doc('users/'+id).set(u);await db.doc('usernames/'+un).set({uid:id});me={id,...u};try{await db.doc('gm/'+WELCOME_CH+'_'+id).set({gid:WELCOME_CH,uid:id,ts:Date.now()})}catch(e){}await botMsg(id,'✅ Регистрация прошла успешно!\nВаш аккаунт @'+un+' создан. Добро пожаловать в EKOOOL!')}
    else{const f=await findUser($('#id').value,true);if(!f)return er.textContent='Неверный юзернейм или пароль';
     if(!f.passHash){const salt=genSalt(),ph=await hp(pw,salt);await db.doc('users/'+f.id).update({salt,passHash:ph});f.salt=salt;f.passHash=ph}
