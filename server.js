@@ -1387,7 +1387,7 @@ async function marketCompletePurchase(listingId,buyerId){
       await client.query('UPDATE ekoool_kv SET data=$3 WHERE collection=$1 AND id=$2',['users',String(l.destinationId),JSON.stringify({...dest,coins:newDestCoins})]);
       await client.query('UPDATE ekoool_kv SET data=$3 WHERE collection=$1 AND id=$2',['users',String(l.sellerId),JSON.stringify(transferred)]);
       await client.query('UPDATE ekoool_kv SET data=$3 WHERE collection=$1 AND id=$2',['market_listings',String(listingId),JSON.stringify({...l,status:'sold',buyerId:String(buyerId),soldAt:Date.now()})]);
-      await client.query('DELETE FROM ekoool_kv WHERE collection=$1 AND data->>'+'uid=$2',['sessions',String(l.sellerId)]);
+      await client.query("DELETE FROM ekoool_kv WHERE collection=$1 AND data->>'uid'=$2",['sessions',String(l.sellerId)]);
       await client.query('COMMIT');
       return {username:seller.username,password:newPass,price,destinationUsername:l.destinationUsername};
     }catch(e){await client.query('ROLLBACK');throw e}finally{client.release()}
