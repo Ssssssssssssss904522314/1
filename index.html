@@ -103,7 +103,7 @@ const wrapQ=q=>({where:(k,o,v)=>wrapQ(q.where(k,o,v)),get:()=>retry(()=>q.get())
 const wrapDb=d=>({doc:p=>{const r=d.doc(p);return{get:()=>retry(()=>r.get()),set:v=>retry(()=>r.set(v)),update:v=>retry(()=>r.update(v)),delete:()=>retry(()=>r.delete())}},collection:c=>wrapQ(d.collection(c))});
 function apiDb(){
  const base='';
- const fx=async(url,opt={})=>{const ac=new AbortController(),tm=setTimeout(()=>ac.abort(),4500);try{return await fx(url,{...opt,signal:ac.signal})}finally{clearTimeout(tm)}};
+ const fx=async(url,opt={})=>{const ac=new AbortController(),tm=setTimeout(()=>ac.abort(),4500);try{return await fetch(url,{...opt,signal:ac.signal})}finally{clearTimeout(tm)}};
  const auth=()=>{try{
    const h={};const t=localStorage.EKOOOL_ADMIN_TOKEN;if(t)h.Authorization='Bearer '+t;
    if(me&&me.id&&me.passHash){h['X-EKOOOL-User']=me.id;h['X-EKOOOL-Proof']=me.passHash}
