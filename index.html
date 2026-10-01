@@ -763,7 +763,7 @@ async function adminUser(id){cache={};const u=await getUser(id);if(!u)return adm
  document.querySelectorAll('[data-nr]').forEach(b=>b.onclick=async()=>{if(await issueNumber(u,id,null,b.dataset.nr))adminUser(id)});
  document.querySelectorAll('[data-nc]').forEach(b=>b.onclick=async()=>{const k=b.dataset.nc,v=document.querySelector('[data-nu="'+k+'"]').value.replace(/[\s+()-]/g,'');if(await issueNumber(u,id,v,k))adminUser(id)});
  document.querySelectorAll('[data-nx]').forEach(b=>b.onclick=async()=>{const k=b.dataset.nx;if(!await askConfirm('Снять номер у пользователя?'))return;await db.doc('numbers/'+u[k].replace(/\D/g,'')).delete();await up({[k]:''})});$('#rp').onclick=async()=>{const v=$('#np').value;if(v.length<6)return alert('Минимум 6 символов');const sl=genSalt();await up({salt:sl,passHash:await hp(v,sl)})}}
- document.querySelectorAll('[data-k]').forEach(b=>b.onclick=()=>up({[b.dataset.k]:!u[b.dataset.k]}));
+ document.querySelectorAll('[data-k]').forEach(b=>b.onclick=async()=>{const k=b.dataset.k,v=!u[k];if(k==='supportAgent'&&isAdmin){try{const rr=await fetch('/api/admin/user-label/'+encodeURIComponent(id),{method:'PATCH',headers:{'Content-Type':'application/json','Authorization':'Bearer '+(localStorage.EKOOOL_ADMIN_TOKEN||'')},body:JSON.stringify({key:k,value:v})});const xx=await rr.json();if(!rr.ok)throw new Error(xx.error||'Ошибка');return adminUser(id)}catch(e){alert('Не удалось выдать роль сотрудника поддержки: '+e.message);return}}await up({[k]:v})});
  $('#bl').onclick=()=>up({blockedUntil:Date.now()+ +$('#du').value});$('#ub').onclick=()=>up({blockedUntil:0});
  $('#dl').onclick=async()=>{if(!await askConfirm('Удалить '+id+' и все его сообщения?'))return;
   await delAcc(id);admin()}}
