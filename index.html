@@ -84,7 +84,89 @@ body{scroll-behavior:smooth}
 :root[data-app-theme="red"]{--bg:#fff0f0;--bg2:#fff6f6;--card:#fff;--tx:#2a1515;--mut:#8d6b6b;--pr:#ef6b73;--th:#f3d8d8}
 :root[data-app-theme="orange"]{--bg:#fff3e8;--bg2:#fff8f1;--card:#fff;--tx:#2b1b10;--mut:#8d735f;--pr:#f28a45;--th:#f3dfcf}
 :root[data-app-theme="black"] body{background:radial-gradient(900px 500px at 0% -10%,rgba(139,92,246,.16),transparent 60%),var(--bg)}
-@media(min-width:900px){html.desktop body{background:var(--bg);overflow:hidden}html.desktop #app{max-width:none;width:100%;height:100%;margin:0;border-radius:0;box-shadow:none}html.desktop .top{padding-left:24px;padding-right:24px}html.desktop .body{padding-left:24px;padding-right:24px}html.desktop .nav{margin-left:24px;margin-right:24px}}</style></head><body><div id="app"><div id="bootFallback" style="height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:30px;text-align:center"><div style="font-size:42px;margin-bottom:12px">💬</div><h1 style="margin:0 0 8px;color:var(--pr)">EKOOOL</h1><p style="margin:0 0 18px;color:var(--mut)">Мессенджер загружается…</p><button onclick="if(window.auth){window.auth()}else{location.reload()}" style="border:0;border-radius:12px;padding:11px 22px;background:var(--pr);color:#fff;cursor:pointer">Открыть мессенджер</button></div></div>
+@media(min-width:900px){html.desktop body{background:var(--bg);overflow:hidden}html.desktop #app{max-width:none;width:100%;height:100%;margin:0;border-radius:0;box-shadow:none}html.desktop .top{padding-left:24px;padding-right:24px}html.desktop .body{padding-left:24px;padding-right:24px}html.desktop .nav{margin-left:24px;margin-right:24px}}/* ---- EKOOOL LIQUID GLASS ---- */
+:root{
+ --glass-bg:rgba(255,255,255,.46);
+ --glass-bg-strong:rgba(255,255,255,.64);
+ --glass-border:rgba(255,255,255,.58);
+ --glass-shadow:0 18px 55px rgba(35,45,90,.16),inset 0 1px 0 rgba(255,255,255,.72);
+ --glass-blur:26px;
+}
+@media(prefers-color-scheme:dark){:root:not([data-theme="light"]){
+ --glass-bg:rgba(24,28,40,.48);--glass-bg-strong:rgba(28,33,48,.68);
+ --glass-border:rgba(255,255,255,.13);--glass-shadow:0 20px 60px rgba(0,0,0,.42),inset 0 1px 0 rgba(255,255,255,.10);
+}}
+:root[data-theme="dark"]{--glass-bg:rgba(24,28,40,.48);--glass-bg-strong:rgba(28,33,48,.68);--glass-border:rgba(255,255,255,.13);--glass-shadow:0 20px 60px rgba(0,0,0,.42),inset 0 1px 0 rgba(255,255,255,.10)}
+body{
+ background:
+ radial-gradient(520px 420px at 8% 8%,rgba(103,140,255,.28),transparent 68%),
+ radial-gradient(500px 420px at 92% 18%,rgba(186,116,255,.22),transparent 68%),
+ radial-gradient(560px 420px at 50% 100%,rgba(66,210,198,.16),transparent 70%),
+ var(--bg);
+ background-attachment:fixed;
+}
+body:before,body:after{content:"";position:fixed;z-index:-1;border-radius:50%;filter:blur(70px);pointer-events:none;opacity:.55}
+body:before{width:220px;height:220px;left:-70px;top:22%;background:rgba(80,130,255,.35);animation:lgFloat 12s ease-in-out infinite}
+body:after{width:260px;height:260px;right:-90px;bottom:12%;background:rgba(196,100,255,.28);animation:lgFloat 15s ease-in-out infinite reverse}
+@keyframes lgFloat{50%{transform:translate3d(25px,-22px,0) scale(1.12)}}
+#app{
+ background:transparent;
+}
+.top,.bar,.nav,.row,.m,.ib,.pr,input.t,textarea.t,select.t,.top .home-search{
+ border:1px solid var(--glass-border)!important;
+ background:var(--glass-bg)!important;
+ box-shadow:var(--glass-shadow)!important;
+ backdrop-filter:saturate(180%) blur(var(--glass-blur));
+ -webkit-backdrop-filter:saturate(180%) blur(var(--glass-blur));
+}
+.top{
+ margin:8px 10px 0;border-radius:24px!important;
+}
+.top:after,.bar:after,.nav:after,.row:after{
+ content:"";position:absolute;left:12%;right:12%;top:0;height:1px;
+ background:linear-gradient(90deg,transparent,rgba(255,255,255,.9),transparent);
+ opacity:.7;pointer-events:none;
+}
+.top{position:sticky}
+.bar{position:relative}
+.nav{position:relative}
+.row{position:relative;overflow:hidden}
+.row:before,.m:before{
+ content:"";position:absolute;inset:0;pointer-events:none;
+ background:linear-gradient(120deg,rgba(255,255,255,.22),transparent 35%,rgba(255,255,255,.06));
+}
+.row{transform:translateZ(0)}
+.row:hover{box-shadow:0 20px 45px rgba(45,65,120,.16),inset 0 1px 0 rgba(255,255,255,.75)!important}
+.m{
+ position:relative;
+ border-radius:22px 22px 22px 7px!important;
+ background:rgba(255,255,255,.48)!important;
+}
+.m.me{
+ background:linear-gradient(135deg,rgba(91,124,255,.78),rgba(123,92,255,.68))!important;
+ border-color:rgba(255,255,255,.36)!important;
+}
+.bar{
+ margin:7px 10px 10px!important;border-radius:28px!important;
+ background:var(--glass-bg-strong)!important;
+}
+.bar input{background:transparent!important}
+.nav{
+ background:var(--glass-bg-strong)!important;border-radius:28px!important;
+}
+.ib{background:rgba(255,255,255,.38)!important}
+.pr{
+ background:linear-gradient(135deg,rgba(91,124,255,.88),rgba(123,92,255,.82))!important;
+ border-color:rgba(255,255,255,.42)!important;
+}
+.av{box-shadow:0 0 0 2px rgba(255,255,255,.65),0 7px 24px rgba(75,90,160,.25)!important}
+input.t,textarea.t,select.t{background:rgba(255,255,255,.38)!important}
+.cel{background:rgba(10,12,20,.42)!important;backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px)}
+.cel .msg{background:var(--glass-bg-strong)!important;border:1px solid var(--glass-border);box-shadow:var(--glass-shadow);backdrop-filter:blur(28px);-webkit-backdrop-filter:blur(28px)}
+@media(min-width:560px){#app{background:rgba(255,255,255,.10);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px)}}
+@media(max-width:559px){.top{margin:4px 7px 0}.body{padding-left:10px;padding-right:10px}.row{border-radius:22px}.nav{margin-left:8px;margin-right:8px}}
+@media(prefers-reduced-motion:reduce){body:before,body:after{animation:none}}
+</style></head><body><div id="app"><div id="bootFallback" style="height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:30px;text-align:center"><div style="font-size:42px;margin-bottom:12px">💬</div><h1 style="margin:0 0 8px;color:var(--pr)">EKOOOL</h1><p style="margin:0 0 18px;color:var(--mut)">Мессенджер загружается…</p><button onclick="if(window.auth){window.auth()}else{location.reload()}" style="border:0;border-radius:12px;padding:11px 22px;background:var(--pr);color:#fff;cursor:pointer">Открыть мессенджер</button></div></div>
 <script>
 const TEST_E2EE=1;
 if(location.search.includes('desktop=1'))document.documentElement.classList.add('desktop');
