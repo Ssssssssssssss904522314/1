@@ -45,3 +45,9 @@ services:
         sync: false
       - key: TELEGRAM_MARKET_WEBHOOK_URL
         value: https://ekool-server.onrender.com/api/telegram/market-webhook
+
+  - type: web
+    name: market-ekoool
+    runtime: static
+    buildCommand: ""
+    staticPublishPath: ./market
