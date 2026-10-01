@@ -434,7 +434,7 @@ async function claimTelegramLink(){
  }catch(e){}
  try{history.replaceState({},document.title,location.pathname+location.hash)}catch(e){}
 }
-function start(){applyAppTheme();addAcc(me.id);loadGifts();beat();grantCheck().catch(()=>{});claimTelegramLink().catch(()=>{});me.username?home():needUn():needUn()}
+function start(){applyAppTheme();addAcc(me.id);loadGifts();beat();grantCheck().catch(()=>{});claimTelegramLink().catch(()=>{});me.username?home():needUn()}
 async function setUsername(raw){const un=raw.trim().toLowerCase().replace(/^@/,''),e=uerr(un);if(e)return e;if(un===me.username)return'';
  if((await db.doc('usernames/'+un).get()).exists)return'Юзернейм занят';await db.doc('usernames/'+un).set({uid:me.id});
  if(me.username)await db.doc('usernames/'+me.username).delete();await db.doc('users/'+me.id).update({username:un});me.username=un;cache={};return''}
