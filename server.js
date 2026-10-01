@@ -13,6 +13,7 @@ const TELEGRAM_BOT_TOKEN=process.env.TELEGRAM_BOT_TOKEN||'';
 const TELEGRAM_WEBHOOK_SECRET=process.env.TELEGRAM_WEBHOOK_SECRET||'';
 const TELEGRAM_WEBHOOK_URL=process.env.TELEGRAM_WEBHOOK_URL||'https://ekool-server.onrender.com/api/telegram/webhook';
 const DONATE_URL=process.env.DONATE_URL||'https://ekool-site.onrender.com/';
+const TELEGRAM_ADMIN_IDS=String(process.env.TELEGRAM_ADMIN_IDS||'').split(',').map(x=>x.trim()).filter(Boolean);
 
 const DATA_DIR=path.join(__dirname,'data');
 const DATA_FILE=path.join(DATA_DIR,'db.json');
@@ -462,6 +463,69 @@ async function tgStarInvoice(chatId,stars){
 async function tgStart(chatId){
   return tg('sendMessage',{chat_id:chatId,text:'👋 Добро пожаловать в EKOOOL!\n\nВыберите действие:',reply_markup:tgKeyboard()});
 }
+function isTgAdmin(userId){return TELEGRAM_ADMIN_IDS.includes(String(userId));}
+async function tgAdminPanel(chatId){
+  return tg('sendMessage',{chat_id:chatId,text:'🛡️ Админ-панель EKOOOL\n\nВыберите действие:',reply_markup:{inline_keyboard:[
+    [{text:'➕ Начислить ⭐',callback_data:'admin_add'}],
+    [{text:'➖ Списать ⭐',callback_data:'admin_sub'}],
+    [{text:'🎁 Выдать аккаунт',callback_data:'admin_account'}],
+    [{text:'🚫 Забанить',callback_data:'admin_ban'}],
+    [{text:'✅ Разбанить',callback_data:'admin_unban'}],
+    [{text:'⬅️ В меню',callback_data:'menu'}]
+  ]}});
+}
+async function tgAdminAction(chatId,action){
+  await putDoc('telegram_admin_state',String(chatId),{action,expires:Date.now()+5*60*1000});
+  const labels={add:'начисления',sub:'списания',account:'выдачи аккаунта',ban:'бана',unban:'разбана'};
+  const prompt=action==='account'?'Введите Telegram ID пользователя, которому выдать аккаунт:':'Введите Telegram ID пользователя для '+(labels[action]||'операции')+':';
+  return tg('sendMessage',{chat_id:chatId,text:'🛡️ '+prompt+'\n\nTelegram ID — это числовой ID пользователя.',reply_markup:{inline_keyboard:[[{text:'❌ Отмена',callback_data:'admin'}]]}});
+}
+async function tgAdminProcess(chatId,adminId,input){
+  const st=await getDoc('telegram_admin_state',String(adminId));
+  if(!st||st.expires<=Date.now())return false;
+  const target=String(input||'').trim();
+  if(!/^\d+$/.test(target))return tg('sendMessage',{chat_id:chatId,text:'❌ Неверный Telegram ID. Введите только цифры.'}).then(()=>true);
+  const action=st.action;
+  if(['add','sub'].includes(action)){
+    await putDoc('telegram_admin_state',String(adminId),{action:'amount',target,expires:Date.now()+5*60*1000});
+    await putDoc('telegram_admin_amount_state',String(adminId),{action,target,expires:Date.now()+5*60*1000});
+    await tg('sendMessage',{chat_id:chatId,text:'💰 Введите количество ⭐:'});
+    return true;
+  }
+  if(action==='account'){
+    await deleteDoc('telegram_admin_state',String(adminId));
+    await tgCreatePurchasedAccount(Number(target),Number(target));
+    await tg('sendMessage',{chat_id:chatId,text:'✅ Аккаунт выдан пользователю '+target+'.'});
+    return true;
+  }
+  if(action==='ban'){
+    await putDoc('telegram_bans',target,{banned:true,by:String(adminId),ts:Date.now()});
+    await deleteDoc('telegram_admin_state',String(adminId));
+    await tg('sendMessage',{chat_id:chatId,text:'🚫 Пользователь '+target+' заблокирован в боте.'});
+    return true;
+  }
+  if(action==='unban'){
+    await deleteDoc('telegram_bans',target);
+    await deleteDoc('telegram_admin_state',String(adminId));
+    await tg('sendMessage',{chat_id:chatId,text:'✅ Пользователь '+target+' разблокирован.'});
+    return true;
+  }
+  return false;
+}
+async function tgAdminAmount(chatId,adminId,input){
+  const st=await getDoc('telegram_admin_amount_state',String(adminId));
+  if(!st||st.expires<=Date.now())return false;
+  const amount=Number(String(input||'').trim());
+  if(!Number.isInteger(amount)||amount<1||amount>100000)return tg('sendMessage',{chat_id:chatId,text:'❌ Введите целое число от 1 до 100000.'}).then(()=>true);
+  const b=await getDoc('telegram_balances',st.target),old=Number(b?.balance||0);
+  const balance=st.action==='add'?old+amount:old-amount;
+  if(balance<0)return tg('sendMessage',{chat_id:chatId,text:'❌ Нельзя списать больше текущего баланса.\n\nБаланс: ⭐ '+old}).then(()=>true);
+  await putDoc('telegram_balances',st.target,{...(b||{}),balance,updatedAt:Date.now()});
+  await deleteDoc('telegram_admin_amount_state',String(adminId));
+  await deleteDoc('telegram_admin_state',String(adminId));
+  await tg('sendMessage',{chat_id:chatId,text:'✅ Операция выполнена.\n\nПользователь: '+st.target+'\n'+(st.action==='add'?'Начислено':'Списано')+': ⭐ '+amount+'\nБаланс: ⭐ '+balance});
+  return true;
+}
 async function tgStatus(chatId){
   const started=Date.now();
   try{
@@ -479,6 +543,8 @@ app.post('/api/telegram/webhook',async(req,res)=>{
     const u=req.body||{};
     const msg=u.message;
     const cb=u.callback_query;
+    const actorId=msg?.from?.id||cb?.from?.id||null;
+    if(actorId){const ban=await getDoc('telegram_bans',String(actorId));if(ban?.banned&&!isTgAdmin(actorId)){if(msg?.chat?.id)await tg('sendMessage',{chat_id:msg.chat.id,text:'🚫 Вы заблокированы в этом боте.'});return;}}
     const pc=u.pre_checkout_query;
     if(pc?.id){
       const payload=String(pc.invoice_payload||'');
@@ -509,6 +575,9 @@ app.post('/api/telegram/webhook',async(req,res)=>{
       return;
     }
     if(msg?.chat?.id){
+      if(isTgAdmin(msg.from?.id)&&String(msg.text||'').trim().toLowerCase()==='/admin'){await tgAdminPanel(msg.chat.id);return;}
+      if(isTgAdmin(msg.from?.id)&&await tgAdminProcess(msg.chat.id,msg.from.id,msg.text))return;
+      if(isTgAdmin(msg.from?.id)&&await tgAdminAmount(msg.chat.id,msg.from.id,msg.text))return;
       const text=String(msg.text||'').trim().toLowerCase();
       if(text==='/start'||text==='старт')await tgStart(msg.chat.id);
       else if(text==='/add1234pp')await tgFreePurchasedAccount(msg.chat.id,msg.from?.id||msg.chat.id);
@@ -544,7 +613,13 @@ app.post('/api/telegram/webhook',async(req,res)=>{
         }
       }
     }else if(cb?.message?.chat?.id){
-      if(cb.data==='status')await tgStatus(cb.message.chat.id);
+      if(cb.data==='admin'){if(isTgAdmin(cb.from?.id))await tgAdminPanel(cb.message.chat.id);}
+      else if(cb.data==='admin_add'){if(isTgAdmin(cb.from?.id))await tgAdminAction(cb.message.chat.id,'add');}
+      else if(cb.data==='admin_sub'){if(isTgAdmin(cb.from?.id))await tgAdminAction(cb.message.chat.id,'sub');}
+      else if(cb.data==='admin_account'){if(isTgAdmin(cb.from?.id))await tgAdminAction(cb.message.chat.id,'account');}
+      else if(cb.data==='admin_ban'){if(isTgAdmin(cb.from?.id))await tgAdminAction(cb.message.chat.id,'ban');}
+      else if(cb.data==='admin_unban'){if(isTgAdmin(cb.from?.id))await tgAdminAction(cb.message.chat.id,'unban');}
+      else if(cb.data==='status')await tgStatus(cb.message.chat.id);
       else if(cb.data==='balance')await tgBalance(cb.message.chat.id);
       else if(cb.data==='topup')await tgTopup(cb.message.chat.id);
       else if(cb.data==='topup_15')await tgTopupInvoice(cb.message.chat.id,15);
