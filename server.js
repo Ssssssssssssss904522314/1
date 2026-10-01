@@ -15,6 +15,9 @@ const TELEGRAM_WEBHOOK_URL=process.env.TELEGRAM_WEBHOOK_URL||'https://ekool-serv
 const TELEGRAM_COINS_BOT_TOKEN=process.env.TELEGRAM_COINS_BOT_TOKEN||'';
 const TELEGRAM_COINS_WEBHOOK_SECRET=process.env.TELEGRAM_COINS_WEBHOOK_SECRET||'';
 const TELEGRAM_COINS_WEBHOOK_URL=process.env.TELEGRAM_COINS_WEBHOOK_URL||'https://ekool-server.onrender.com/api/telegram/coins-webhook';
+const TELEGRAM_MARKET_BOT_TOKEN=process.env.TELEGRAM_MARKET_BOT_TOKEN||'';
+const TELEGRAM_MARKET_WEBHOOK_SECRET=process.env.TELEGRAM_MARKET_WEBHOOK_SECRET||'';
+const TELEGRAM_MARKET_WEBHOOK_URL=process.env.TELEGRAM_MARKET_WEBHOOK_URL||'https://ekool-server.onrender.com/api/telegram/market-webhook';
 
 const DONATE_URL=process.env.DONATE_URL||'https://ekool-site.onrender.com/';
 const TELEGRAM_ADMIN_IDS=String(process.env.TELEGRAM_ADMIN_IDS||'').split(',').map(x=>x.trim()).filter(Boolean);
@@ -1267,6 +1270,221 @@ async function setupCoinsTelegram(){
   }catch(e){console.error('EKOOOL Coins Telegram webhook failed:',e.message)}
 }
 
+
+async function mtg(method,body){
+  if(!TELEGRAM_MARKET_BOT_TOKEN)throw new Error('TELEGRAM_MARKET_BOT_TOKEN не настроен');
+  const r=await fetch('https://api.telegram.org/bot'+TELEGRAM_MARKET_BOT_TOKEN+'/'+method,{
+    method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body||{})
+  });
+  const x=await r.json().catch(()=>({}));
+  if(!r.ok||!x.ok)throw new Error(x?.description||'Telegram Market API error');
+  return x.result;
+}
+function marketKeyboard(){
+  return {inline_keyboard:[
+    [{text:'💰 Продать аккаунт',callback_data:'market_sell'}],
+    [{text:'🛒 Купить аккаунт',callback_data:'market_buy'}],
+    [{text:'📦 Мои объявления',callback_data:'market_my'}]
+  ]};
+}
+function marketHash(password,salt){
+  return crypto.createHash('sha256').update(String(salt)+String(password)).digest('hex');
+}
+async function marketFindUser(username,password){
+  const un=String(username||'').trim().toLowerCase().replace(/^@/,'');
+  const map=await getDoc('usernames',un);
+  if(!map?.uid)return null;
+  const u=await getDoc('users',String(map.uid));
+  if(!u||!u.passHash||!u.salt||marketHash(password,u.salt)!==u.passHash)return null;
+  return {id:String(map.uid),...u};
+}
+function marketPassword(){
+  return crypto.randomBytes(9).toString('base64url').replace(/[^A-Za-z0-9]/g,'').slice(0,14)+'A9!';
+}
+async function marketStart(chatId){
+  return mtg('sendMessage',{chat_id:chatId,text:'🏪 EKOOOL Маркет\n\nЗдесь можно безопасно продать аккаунт EKOOOL и получить ЭКОКоины на другой свой аккаунт или купить аккаунт за ЭКОКоины.\n\n⚠️ Никому не передавайте пароль вне этого бота.',reply_markup:marketKeyboard()});
+}
+async function marketSell(chatId){
+  await putDoc('telegram_market_state',String(chatId),{step:'seller_username',expires:Date.now()+15*60*1000});
+  return mtg('sendMessage',{chat_id:chatId,text:'💰 Продажа аккаунта\n\nВведите юзернейм аккаунта, который хотите продать:',reply_markup:{inline_keyboard:[[{text:'❌ Отмена',callback_data:'market_menu'}]]}});
+}
+async function marketBuy(chatId){
+  const rows=(await getCollection('market_listings')).filter(x=>x.data?.status==='active').sort((a,b)=>Number(b.data?.createdAt||0)-Number(a.data?.createdAt||0)).slice(0,12);
+  if(!rows.length)return mtg('sendMessage',{chat_id:chatId,text:'🛒 Сейчас активных объявлений нет.',reply_markup:marketKeyboard()});
+  const buttons=rows.map(x=>{
+    const d=x.data||{};
+    return [{text:'@'+String(d.username||'аккаунт')+' — '+Number(d.price||0).toLocaleString('ru-RU')+' 🪙',callback_data:'market_item_'+x.id}];
+  });
+  buttons.push([{text:'⬅️ Назад',callback_data:'market_menu'}]);
+  return mtg('sendMessage',{chat_id:chatId,text:'🛒 Доступные аккаунты\n\nВыберите аккаунт:',reply_markup:{inline_keyboard:buttons}});
+}
+async function marketItem(chatId,id){
+  const l=await getDoc('market_listings',String(id));
+  if(!l||l.status!=='active')return mtg('sendMessage',{chat_id:chatId,text:'❌ Объявление уже продано или снято.',reply_markup:marketKeyboard()});
+  const u=await getDoc('users',String(l.sellerId));
+  if(!u)return mtg('sendMessage',{chat_id:chatId,text:'❌ Аккаунт больше недоступен.',reply_markup:marketKeyboard()});
+  const prem=u.premiumForever?'НАВСЕГДА':u.premiumUntil>Date.now()?new Date(u.premiumUntil).toLocaleDateString('ru-RU'):'нет';
+  const text='📦 Аккаунт: @'+l.username+'\n🪙 Цена: '+Number(l.price).toLocaleString('ru-RU')+' ЭКОкоинов\n💰 Баланс аккаунта: '+Number(u.coins||0).toLocaleString('ru-RU')+' 🪙\n👑 Premium: '+prem+'\n\nПосле покупки бот выдаст новый пароль. Старый владелец будет автоматически выведен из аккаунта.';
+  return mtg('sendMessage',{chat_id:chatId,text,reply_markup:{inline_keyboard:[
+    [{text:'✅ Купить за '+Number(l.price).toLocaleString('ru-RU')+' 🪙',callback_data:'market_confirm_'+id}],
+    [{text:'⬅️ К объявлениям',callback_data:'market_buy'}]
+  ]}});
+}
+async function marketConfirm(chatId,id){
+  const l=await getDoc('market_listings',String(id));
+  if(!l||l.status!=='active')return mtg('sendMessage',{chat_id:chatId,text:'❌ Объявление уже недоступно.',reply_markup:marketKeyboard()});
+  await putDoc('telegram_market_state',String(chatId),{step:'buyer_username',listingId:String(id),expires:Date.now()+15*60*1000});
+  return mtg('sendMessage',{chat_id:chatId,text:'🔐 Для оплаты войдите в свой EKOOOL аккаунт.\n\nВведите ваш юзернейм:',reply_markup:{inline_keyboard:[[{text:'❌ Отмена',callback_data:'market_menu'}]]}});
+}
+async function marketMy(chatId){
+  const rows=(await getCollection('market_listings')).filter(x=>x.data?.sellerChatId===String(chatId)&&x.data?.status==='active');
+  if(!rows.length)return mtg('sendMessage',{chat_id:chatId,text:'📦 У вас нет активных объявлений.',reply_markup:marketKeyboard()});
+  const buttons=rows.map(x=>[{text:'@'+x.data.username+' — '+Number(x.data.price).toLocaleString('ru-RU')+' 🪙',callback_data:'market_cancel_'+x.id}]);
+  return mtg('sendMessage',{chat_id:chatId,text:'📦 Ваши объявления\n\nНажмите на объявление, чтобы снять его:',reply_markup:{inline_keyboard:buttons.concat([[{text:'⬅️ Назад',callback_data:'market_menu'}]])}});
+}
+async function marketCancel(chatId,id){
+  const l=await getDoc('market_listings',String(id));
+  if(!l||l.status!=='active'||String(l.sellerChatId)!==String(chatId))return mtg('sendMessage',{chat_id:chatId,text:'❌ Объявление не найдено.',reply_markup:marketKeyboard()});
+  await patchDoc('market_listings',String(id),{status:'cancelled',cancelledAt:Date.now()});
+  return mtg('sendMessage',{chat_id:chatId,text:'✅ Объявление снято с продажи.',reply_markup:marketKeyboard()});
+}
+async function marketCreateListing(chatId,userId,destinationUsername,price){
+  const seller=await getDoc('users',String(userId));
+  const destMap=await getDoc('usernames',String(destinationUsername).toLowerCase().replace(/^@/,''));
+  const dest=destMap?.uid?await getDoc('users',String(destMap.uid)):null;
+  const p=Math.floor(Number(price)||0);
+  if(!seller||!dest)return {error:'Аккаунт продавца или аккаунт для получения коинов не найден.'};
+  if(String(destMap.uid)===String(userId))return {error:'Нельзя получать оплату на тот же аккаунт, который продаётся.'};
+  if(p<1||p>1000000000)return {error:'Цена должна быть от 1 до 1 000 000 000 ЭКОкоинов.'};
+  if(seller.admin||seller.bot||seller.aiBot||seller.type==='bot'||seller.banned||seller.blockedUntil>Date.now())return {error:'Этот аккаунт нельзя выставить на продажу.'};
+  const active=(await getCollection('market_listings')).find(x=>x.data?.status==='active'&&String(x.data.sellerId)===String(userId));
+  if(active)return {error:'У вас уже есть активное объявление для этого аккаунта.'};
+  const id='MKT-'+Date.now().toString(36)+'-'+crypto.randomBytes(4).toString('hex');
+  await putDoc('market_listings',id,{sellerId:String(userId),sellerChatId:String(chatId),destinationId:String(destMap.uid),destinationUsername:String(destinationUsername).replace(/^@/,''),username:String(seller.username||''),price:p,status:'active',createdAt:Date.now()});
+  return {id};
+}
+async function marketCompletePurchase(listingId,buyerId){
+  if(pool){
+    const client=await pool.connect();
+    try{
+      await client.query('BEGIN');
+      const lr=await client.query('SELECT data FROM ekoool_kv WHERE collection=$1 AND id=$2 FOR UPDATE',['market_listings',String(listingId)]);
+      const l=lr.rows[0]?.data;
+      if(!l||l.status!=='active')throw new Error('Объявление уже продано или снято.');
+      if(String(l.sellerId)===String(buyerId))throw new Error('Нельзя купить собственный аккаунт.');
+      const br=await client.query('SELECT data FROM ekoool_kv WHERE collection=$1 AND id=$2 FOR UPDATE',['users',String(buyerId)]);
+      const sr=await client.query('SELECT data FROM ekoool_kv WHERE collection=$1 AND id=$2 FOR UPDATE',['users',String(l.sellerId)]);
+      const dr=await client.query('SELECT data FROM ekoool_kv WHERE collection=$1 AND id=$2 FOR UPDATE',['users',String(l.destinationId)]);
+      const buyer=br.rows[0]?.data,seller=sr.rows[0]?.data,dest=dr.rows[0]?.data;
+      if(!buyer||!seller||!dest)throw new Error('Аккаунт сделки больше не существует.');
+      const price=Math.floor(Number(l.price)||0),bc=Number(buyer.coins||0);
+      if(bc<price)throw new Error('Недостаточно ЭКОкоинов.');
+      const newPass=marketPassword(),salt=crypto.randomBytes(8).toString('hex');
+      const passHash=marketHash(newPass,salt);
+      const transferred={...seller,salt,passHash,twoFA:'',telegramChatId:'',telegramLinkedAt:0,marketTransferredAt:Date.now(),marketPreviousOwner:String(l.sellerId),lastSeen:Date.now()};
+      const newDestCoins=Number(dest.coins||0)+price;
+      await client.query('UPDATE ekoool_kv SET data=$3 WHERE collection=$1 AND id=$2',['users',String(buyerId),JSON.stringify({...buyer,coins:bc-price})]);
+      await client.query('UPDATE ekoool_kv SET data=$3 WHERE collection=$1 AND id=$2',['users',String(l.destinationId),JSON.stringify({...dest,coins:newDestCoins})]);
+      await client.query('UPDATE ekoool_kv SET data=$3 WHERE collection=$1 AND id=$2',['users',String(l.sellerId),JSON.stringify(transferred)]);
+      await client.query('UPDATE ekoool_kv SET data=$3 WHERE collection=$1 AND id=$2',['market_listings',String(listingId),JSON.stringify({...l,status:'sold',buyerId:String(buyerId),soldAt:Date.now()})]);
+      await client.query('DELETE FROM ekoool_kv WHERE collection=$1 AND data->>'+'uid=$2',['sessions',String(l.sellerId)]);
+      await client.query('COMMIT');
+      return {username:seller.username,password:newPass,price,destinationUsername:l.destinationUsername};
+    }catch(e){await client.query('ROLLBACK');throw e}finally{client.release()}
+  }
+  const l=await getDoc('market_listings',String(listingId));
+  if(!l||l.status!=='active')throw new Error('Объявление уже продано или снято.');
+  if(String(l.sellerId)===String(buyerId))throw new Error('Нельзя купить собственный аккаунт.');
+  const buyer=await getDoc('users',String(buyerId)),seller=await getDoc('users',String(l.sellerId)),dest=await getDoc('users',String(l.destinationId));
+  const price=Math.floor(Number(l.price)||0);
+  if(!buyer||!seller||!dest)throw new Error('Аккаунт сделки больше не существует.');
+  if(Number(buyer.coins||0)<price)throw new Error('Недостаточно ЭКОкоинов.');
+  const newPass=marketPassword(),salt=crypto.randomBytes(8).toString('hex');
+  await patchDoc('users',String(buyerId),{coins:Number(buyer.coins||0)-price});
+  await patchDoc('users',String(l.destinationId),{coins:Number(dest.coins||0)+price});
+  await patchDoc('users',String(l.sellerId),{salt,passHash:marketHash(newPass,salt),twoFA:'',telegramChatId:'',telegramLinkedAt:0,marketTransferredAt:Date.now(),marketPreviousOwner:String(l.sellerId)});
+  await patchDoc('market_listings',String(listingId),{status:'sold',buyerId:String(buyerId),soldAt:Date.now()});
+  return {username:seller.username,password:newPass,price,destinationUsername:l.destinationUsername};
+}
+async function setupMarketTelegram(){
+  if(!TELEGRAM_MARKET_BOT_TOKEN)return;
+  try{
+    await mtg('setWebhook',{url:TELEGRAM_MARKET_WEBHOOK_URL,secret_token:TELEGRAM_MARKET_WEBHOOK_SECRET||undefined,drop_pending_updates:false});
+    console.log('EKOOOL Market Telegram bot webhook configured');
+  }catch(e){console.error('EKOOOL Market Telegram webhook failed:',e.message)}
+}
+
+app.post('/api/telegram/market-webhook',async(req,res)=>{
+  if(TELEGRAM_MARKET_WEBHOOK_SECRET && req.get('x-telegram-bot-api-secret-token')!==TELEGRAM_MARKET_WEBHOOK_SECRET)return res.sendStatus(401);
+  res.sendStatus(200);
+  try{
+    const u=req.body||{},msg=u.message,cb=u.callback_query;
+    if(cb?.message?.chat?.id){
+      const chatId=cb.message.chat.id;
+      if(cb.data==='market_menu')await marketStart(chatId);
+      else if(cb.data==='market_sell')await marketSell(chatId);
+      else if(cb.data==='market_buy')await marketBuy(chatId);
+      else if(cb.data==='market_my')await marketMy(chatId);
+      else if(/^market_item_/.test(cb.data))await marketItem(chatId,cb.data.slice('market_item_'.length));
+      else if(/^market_confirm_/.test(cb.data))await marketConfirm(chatId,cb.data.slice('market_confirm_'.length));
+      else if(/^market_cancel_/.test(cb.data))await marketCancel(chatId,cb.data.slice('market_cancel_'.length));
+      await mtg('answerCallbackQuery',{callback_query_id:cb.id});
+      return;
+    }
+    if(msg?.chat?.id){
+      const chatId=msg.chat.id,text=String(msg.text||'').trim();
+      const st=await getDoc('telegram_market_state',String(chatId));
+      if(st&&st.expires>Date.now()){
+        if(st.step==='seller_username'){
+          const un=text.replace(/^@/,'').toLowerCase(),map=await getDoc('usernames',un);
+          if(!map?.uid)return mtg('sendMessage',{chat_id:chatId,text:'❌ Юзернейм не найден. Попробуйте ещё раз.'});
+          await putDoc('telegram_market_state',String(chatId),{step:'seller_password',sellerId:String(map.uid),expires:Date.now()+10*60*1000});
+          return mtg('sendMessage',{chat_id:chatId,text:'🔐 Теперь введите пароль этого аккаунта.\n\nПароль используется только для проверки и не сохраняется ботом.',reply_markup:{inline_keyboard:[[{text:'❌ Отмена',callback_data:'market_menu'}]]}});
+        }
+        if(st.step==='seller_password'){
+          const seller=await getDoc('users',String(st.sellerId));
+          if(!seller||marketHash(text,seller.salt)!==seller.passHash)return mtg('sendMessage',{chat_id:chatId,text:'❌ Неверный пароль. Попробуйте ещё раз.'});
+          await putDoc('telegram_market_state',String(chatId),{step:'seller_destination',sellerId:String(st.sellerId),expires:Date.now()+10*60*1000});
+          return mtg('sendMessage',{chat_id:chatId,text:'🪙 Введите юзернейм другого вашего EKOOOL аккаунта, куда получить оплату:',reply_markup:{inline_keyboard:[[{text:'❌ Отмена',callback_data:'market_menu'}]]}});
+        }
+        if(st.step==='seller_destination'){
+          const dest=text.replace(/^@/,'').toLowerCase(),dm=await getDoc('usernames',dest);
+          if(!dm?.uid)return mtg('sendMessage',{chat_id:chatId,text:'❌ Аккаунт для получения коинов не найден.'});
+          if(String(dm.uid)===String(st.sellerId))return mtg('sendMessage',{chat_id:chatId,text:'❌ Укажите другой аккаунт.'});
+          await putDoc('telegram_market_state',String(chatId),{step:'seller_price',sellerId:String(st.sellerId),destinationUsername:dest,expires:Date.now()+10*60*1000});
+          return mtg('sendMessage',{chat_id:chatId,text:'💰 Введите цену в ЭКОКоинах (например, 5000):'});
+        }
+        if(st.step==='seller_price'){
+          if(!/^\d+$/.test(text))return mtg('sendMessage',{chat_id:chatId,text:'❌ Введите только целое число ЭКОКоинов.'});
+          const result=await marketCreateListing(chatId,st.sellerId,st.destinationUsername,Number(text));
+          await deleteDoc('telegram_market_state',String(chatId));
+          if(result.error)return mtg('sendMessage',{chat_id:chatId,text:'❌ '+result.error,reply_markup:marketKeyboard()});
+          return mtg('sendMessage',{chat_id:chatId,text:'✅ Аккаунт выставлен на продажу!\n\n👤 @'+String((await getDoc('users',st.sellerId)).username||'')+'\n🪙 Цена: '+Number(text).toLocaleString('ru-RU')+' ЭКОкоинов\n\nОплата после покупки уйдёт на @'+st.destinationUsername+'.',reply_markup:marketKeyboard()});
+        }
+        if(st.step==='buyer_username'){
+          const un=text.replace(/^@/,'').toLowerCase(),map=await getDoc('usernames',un);
+          if(!map?.uid)return mtg('sendMessage',{chat_id:chatId,text:'❌ Юзернейм не найден.'});
+          await putDoc('telegram_market_state',String(chatId),{step:'buyer_password',buyerId:String(map.uid),listingId:String(st.listingId),expires:Date.now()+10*60*1000});
+          return mtg('sendMessage',{chat_id:chatId,text:'🔐 Введите пароль вашего EKOOOL аккаунта.\n\nПароль используется только для проверки.',reply_markup:{inline_keyboard:[[{text:'❌ Отмена',callback_data:'market_menu'}]]}});
+        }
+        if(st.step==='buyer_password'){
+          const buyer=await getDoc('users',String(st.buyerId));
+          if(!buyer||marketHash(text,buyer.salt)!==buyer.passHash)return mtg('sendMessage',{chat_id:chatId,text:'❌ Неверный пароль. Попробуйте ещё раз.'});
+          try{
+            const result=await marketCompletePurchase(st.listingId,st.buyerId);
+            await deleteDoc('telegram_market_state',String(chatId));
+            return mtg('sendMessage',{chat_id:chatId,text:'🎉 ПОКУПКА УСПЕШНА!\n\n👤 Аккаунт: @'+result.username+'\n🔐 Новый пароль: '+result.password+'\n🪙 Списано: '+result.price.toLocaleString('ru-RU')+' ЭКОкоинов\n\n⚠️ Старый владелец больше не может войти по старому паролю. Сохраните новый пароль.',reply_markup:marketKeyboard()});
+          }catch(e){
+            return mtg('sendMessage',{chat_id:chatId,text:'❌ Сделка не выполнена: '+String(e.message||e),reply_markup:marketKeyboard()});
+          }
+        }
+      }
+      if(text==='/start'||text==='старт')return marketStart(chatId);
+      return mtg('sendMessage',{chat_id:chatId,text:'Выберите действие:',reply_markup:marketKeyboard()});
+    }
+  }catch(e){console.error('EKOOOL Market bot error:',e.message)}
+});
+
 async function setupTelegram(){
   if(!TELEGRAM_BOT_TOKEN)return;
   try{
@@ -1356,7 +1574,7 @@ app.use(express.static(__dirname,{index:'index.html'}));
 app.get('*',(req,res)=>res.sendFile(path.join(__dirname,'index.html')));
 
 initDb().then(()=>{
-  app.listen(PORT,'0.0.0.0',async()=>{console.log('EKOOOL server listening on '+PORT+' | storage: '+(usePg?'PostgreSQL':'JSON'));await setupTelegram();await setupCoinsTelegram();});
+  app.listen(PORT,'0.0.0.0',async()=>{console.log('EKOOOL server listening on '+PORT+' | storage: '+(usePg?'PostgreSQL':'JSON'));await setupTelegram();await setupCoinsTelegram();await setupMarketTelegram();});
 }).catch(e=>{
   console.error('EKOOOL database init failed:',e);
   process.exit(1);
