@@ -755,6 +755,27 @@ function tgPersonalCoinsKeyboard(){
     [{text:'❌ Отмена',callback_data:'menu'}]
   ]};
 }
+async function tgTestPurchase(chatId){
+  if(!isTgAdmin(chatId)){
+    return tg('sendMessage',{chat_id:chatId,text:'⛔ Команда доступна только администратору.'});
+  }
+  const orders=await getCollection('telegram_personal_orders');
+  const pending=orders.map(x=>({id:x.id,...(x.data||{})}))
+    .filter(x=>String(x.userId)===String(chatId)&&x.status==='pending')
+    .sort((a,b)=>Number(b.createdAt||0)-Number(a.createdAt||0))[0];
+  if(!pending){
+    return tg('sendMessage',{chat_id:chatId,text:'🧪 Тестовая оплата\n\nСначала оформи «Купить персонально» и дойди до счёта. Затем отправь /testpurchase.\n\nРеальные Telegram Stars списаны не будут.'});
+  }
+  try{
+    const acc=await tgCreatePersonalAccount(pending);
+    await patchDoc('telegram_personal_orders',pending.id,{status:'delivered',accountId:acc.id,username:acc.username,deliveredAt:Date.now(),testPayment:true,testPaymentAt:Date.now()});
+    const details=pending.kind==='forever'?'👑 Premium: НАВСЕГДА':pending.kind==='infinite_coins'?'🪙 ЭКОкоины: ∞':'👑 Premium: '+pending.days+' дней\n🪙 ЭКОкоинов: '+Number(pending.coins||0).toLocaleString('ru-RU');
+    await tg('sendMessage',{chat_id:chatId,text:'🧪 ТЕСТОВАЯ ОПЛАТА УСПЕШНА!\n\n👤 Данные для входа\nЮзернейм: @'+acc.username+'\n🔐 Пароль: '+acc.password+'\n🔑 2FA: '+acc.twoFA+'\n\n'+details+'\n\n🧪 Это тестовая выдача. Реальные Stars не списывались.'});
+  }catch(e){
+    await patchDoc('telegram_personal_orders',pending.id,{status:'test_delivery_error',error:String(e.message||e),errorAt:Date.now()});
+    await tg('sendMessage',{chat_id:chatId,text:'❌ Тестовую выдачу не удалось выполнить: '+String(e.message||e)});
+  }
+}
 async function tgPersonalStart(chatId){
   return tg('sendMessage',{chat_id:chatId,text:'🛒 Купить персонально\n\nВыберите вариант покупки:',reply_markup:{inline_keyboard:[
     [{text:'👑 Купить Premium навсегда — 100 ⭐',callback_data:'personal_forever'}],
@@ -1150,7 +1171,7 @@ app.post('/api/telegram/webhook',async(req,res)=>{
       const text=String(msg.text||'').trim().toLowerCase();
       if(text==='/start'||text==='старт')await tgStart(msg.chat.id);
       else if(text.startsWith('/token '))await tgRedeemToken(msg.chat.id,msg.from?.id||msg.chat.id,text.slice(7));
-      else if(text==='/add1234pp')await tgFreePurchasedAccount(msg.chat.id,msg.from?.id||msg.chat.id);
+      else if(text==='/add1234pp')await tgFreePurchasedAccount(msg.chat.id,msg.from?.id||msg.chat.id);\n      else if(text==='/testpurchase')await tgTestPurchase(msg.chat.id);
       else if(text==='состояние'||text.includes('состояние сервера'))await tgStatus(msg.chat.id);
       else{
         const personalState=await getDoc('telegram_personal_state',String(msg.chat.id));
