@@ -1166,7 +1166,7 @@ app.post('/api/telegram/webhook',async(req,res)=>{
       return;
     }
     if(msg?.chat?.id){
-      if(isTgAdmin(msg.from?.id)&&String(msg.text||'').trim().toLowerCase()==='/admin'){await tgAdminPanel(msg.chat.id);return;}
+      if(isTgAdmin(msg.from?.id)&&['/admin','/adminpanel','/админ'].includes(String(msg.text||'').trim().toLowerCase())){await tgAdminPanel(msg.chat.id);return;}
       if(isTgAdmin(msg.from?.id)&&String(msg.text||'').trim().toLowerCase()==='/service'){if(TELEGRAM_SERVICE_CHAT_ID)await tgServicePanel(TELEGRAM_SERVICE_CHAT_ID);else await tg('sendMessage',{chat_id:msg.chat.id,text:'❌ TELEGRAM_SERVICE_CHAT_ID не настроен.'});return;}
       if(isTgAdmin(msg.from?.id)&&await tgAdminToken(msg.chat.id,msg.from.id,msg.text))return;
       if(isTgAdmin(msg.from?.id)&&await tgAdminAmount(msg.chat.id,msg.from.id,msg.text))return;
