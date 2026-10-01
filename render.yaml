@@ -30,3 +30,18 @@ services:
         sync: false
       - key: EKOOOL_PUBLIC_URL
         value: https://ekool-site.onrender.com
+
+  - type: web
+    name: ekool-market-bot
+    runtime: node
+    buildCommand: npm install
+    startCommand: node server.js
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: TELEGRAM_MARKET_BOT_TOKEN
+        sync: false
+      - key: TELEGRAM_MARKET_WEBHOOK_SECRET
+        sync: false
+      - key: TELEGRAM_MARKET_WEBHOOK_URL
+        value: https://ekool-server.onrender.com/api/telegram/market-webhook
