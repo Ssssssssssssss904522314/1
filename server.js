@@ -350,10 +350,55 @@ async function tg(method,body){
 function tgKeyboard(){
   return {inline_keyboard:[
     [{text:'🟢 Состояние сервера',callback_data:'status'}],
-    [{text:'⭐ Задонатить звёздами',callback_data:'donate'}],
+    [{text:'💰 Баланс',callback_data:'balance'}],
+    [{text:'⭐ Пополнить баланс',callback_data:'topup'}],
     [{text:'🛒 Купить аккаунт — 50 ⭐',callback_data:'buy_account'}]
   ]};
 }
+async function tgBalance(chatId){
+  const b=await getDoc('telegram_balances',String(chatId));
+  const balance=Number(b?.balance||0);
+  return tg('sendMessage',{chat_id:chatId,text:'💰 Ваш баланс\n\n⭐ '+balance+' звёзд',reply_markup:{inline_keyboard:[
+    [{text:'⭐ Пополнить баланс',callback_data:'topup'}],
+    [{text:'🛒 Купить аккаунт за 50 ⭐',callback_data:'buy_balance_account'}],
+    [{text:'⬅️ Назад',callback_data:'menu'}]
+  ]}});
+}
+async function tgTopup(chatId){
+  return tg('sendMessage',{chat_id:chatId,text:'⭐ Пополнение баланса\n\nВыберите сумму:',reply_markup:{inline_keyboard:[
+    [{text:'⭐ 15',callback_data:'topup_15'},{text:'⭐ 25',callback_data:'topup_25'}],
+    [{text:'💳 Своя сумма',callback_data:'topup_custom'}],
+    [{text:'⬅️ Назад',callback_data:'balance'}]
+  ]}});
+}
+async function tgTopupInvoice(chatId,stars){
+  const amount=Number(stars);
+  if(!Number.isInteger(amount)||amount<1||amount>100000)return;
+  return tg('sendInvoice',{chat_id:chatId,title:'Пополнение баланса EKOOOL',description:'Пополнение внутреннего баланса EKOOOL',payload:'ekoool_topup_'+amount+'_'+Date.now(),currency:'XTR',prices:[{label:'Пополнение баланса',amount}]});
+}
+async function tgConfirmBalancePurchase(chatId){
+  const b=await getDoc('telegram_balances',String(chatId));
+  const balance=Number(b?.balance||0);
+  if(balance<50)return tg('sendMessage',{chat_id:chatId,text:'❌ Недостаточно средств.\n\nБаланс: ⭐ '+balance+'\nНужно: ⭐ 50',reply_markup:{inline_keyboard:[[{text:'⭐ Пополнить',callback_data:'topup'}],[{text:'⬅️ Назад',callback_data:'balance'}]]}});
+  return tg('sendMessage',{chat_id:chatId,text:'⚠️ Подтверждение операции\n\n🛒 Покупка аккаунта EKOOOL\n⭐ Стоимость: 50 звёзд\n👑 Premium: 3 месяца\n🔴 Красная верификация\n\nСписать 50 ⭐ с баланса?',reply_markup:{inline_keyboard:[
+    [{text:'✅ Подтвердить покупку',callback_data:'confirm_balance_account'}],
+    [{text:'❌ Отмена',callback_data:'balance'}]
+  ]}});
+}
+async function tgBuyFromBalance(chatId,userId){
+  const key=String(chatId);
+  const b=await getDoc('telegram_balances',key);
+  const balance=Number(b?.balance||0);
+  if(balance<50)return tg('sendMessage',{chat_id:chatId,text:'❌ Недостаточно средств.'});
+  await putDoc('telegram_balances',key,{...(b||{}),balance:balance-50,updatedAt:Date.now()});
+  try{
+    await tgCreatePurchasedAccount(chatId,userId);
+  }catch(e){
+    await putDoc('telegram_balances',key,{...(b||{}),balance:balance,updatedAt:Date.now()});
+    throw e;
+  }
+}
+
 async function tgBuyAccountInfo(chatId){
   return tg('sendMessage',{chat_id:chatId,text:'🛒 Покупка аккаунта EKOOOL\n\nТут ты можешь купить сразу аккаунт с Premium и красной верификацией. Достаточно нажать кнопку «Купить», оплатить — и всё готово!\n\n🎁 В комплекте:\n👑 Premium на 3 месяца\n🔴 Красная верификация\n🔐 2FA\n⚡ Автоматическое создание аккаунта после оплаты.',reply_markup:{inline_keyboard:[
     [{text:'⭐ Купить за 50 звёзд',callback_data:'buy_account_pay'}],
@@ -439,7 +484,8 @@ app.post('/api/telegram/webhook',async(req,res)=>{
       const payload=String(pc.invoice_payload||'');
       const ok=pc.currency==='XTR' && (
         (payload.startsWith('ekoool_donate_') && [15,25].includes(Number(pc.total_amount))) ||
-        (payload.startsWith('ekoool_account_50_') && Number(pc.total_amount)===50)
+        (payload.startsWith('ekoool_account_50_') && Number(pc.total_amount)===50) ||
+        (payload.startsWith('ekoool_topup_') && Number(pc.total_amount)>=1 && Number(pc.total_amount)<=100000)
       );
       await tg('answerPreCheckoutQuery',{pre_checkout_query_id:pc.id,ok,...(!ok?{error_message:'Не удалось подтвердить донат. Попробуйте ещё раз.'}:{})});
       return;
@@ -452,6 +498,11 @@ app.post('/api/telegram/webhook',async(req,res)=>{
       });
       if(String(p.invoice_payload||'').startsWith('ekoool_account_50_')){
         await tgCreatePurchasedAccount(msg.chat.id,msg.from?.id||msg.chat.id);
+      }else if(String(p.invoice_payload||'').startsWith('ekoool_topup_')){
+        const key=String(msg.chat.id),b=await getDoc('telegram_balances',key);
+        const balance=Number(b?.balance||0)+Number(p.total_amount||0);
+        await putDoc('telegram_balances',key,{...(b||{}),balance,updatedAt:Date.now()});
+        await tg('sendMessage',{chat_id:msg.chat.id,text:'✅ Баланс пополнен!\n\n➕ '+p.total_amount+' ⭐\n💰 Баланс: '+balance+' ⭐',reply_markup:tgKeyboard()});
       }else{
         await tg('sendMessage',{chat_id:msg.chat.id,text:'⭐ Спасибо за донат!\n\nВы поддержали развитие EKOOOL на '+p.total_amount+' звёзд. ❤️',reply_markup:tgKeyboard()});
       }
@@ -463,6 +514,17 @@ app.post('/api/telegram/webhook',async(req,res)=>{
       else if(text==='/add1234pp')await tgFreePurchasedAccount(msg.chat.id,msg.from?.id||msg.chat.id);
       else if(text==='состояние'||text.includes('состояние сервера'))await tgStatus(msg.chat.id);
       else {
+        const topupState=await getDoc('telegram_topup_state',String(msg.chat.id));
+        if(topupState?.expires>Date.now()){
+          const raw=String(msg.text||'').trim().replace(/\s/g,'');
+          if(/^\d+$/.test(raw)){
+            const amount=Number(raw);
+            if(Number.isInteger(amount)&&amount>=1&&amount<=100000){
+              await deleteDoc('telegram_topup_state',String(msg.chat.id));
+              await tgTopupInvoice(msg.chat.id,amount);
+            }else await tg('sendMessage',{chat_id:msg.chat.id,text:'❌ Введите число от 1 до 100000.'});
+          }else await tg('sendMessage',{chat_id:msg.chat.id,text:'❌ Введите сумму только числом.'});
+        }else{
         const state=await getDoc('telegram_donate_state',String(msg.chat.id));
         if(state?.expires>Date.now()){
           const raw=String(msg.text||'').trim().replace(/\s/g,'');
