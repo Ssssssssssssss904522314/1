@@ -489,7 +489,7 @@ async function tgCreatePurchasedAccount(chatId,userId){
   if(username.length<8)username='ekoool_'+crypto.randomBytes(4).toString('hex');
   if(await getDoc('usernames',username))username='ekoool_'+crypto.randomBytes(5).toString('hex');
   const now=Date.now();
-  const user={name:'EKOOOL Premium',photo:'',bio:'Покупной аккаунт EKOOOL',verified:false,red:true,premiumUntil:now+90*24*60*60*1000,premiumStart:now,coins:1000,username,extra:[],salt,passHash,lastSeen:now,ts:now};
+  const user={name:'EKOOOL Premium',photo:'',bio:'Покупной аккаунт EKOOOL',verified:false,red:true,purchased:true,premiumUntil:now+90*24*60*60*1000,premiumStart:now,coins:1000,username,extra:[],salt,passHash,lastSeen:now,ts:now};
   await putDoc('users',id,user);
   await putDoc('usernames',username,{uid:id});
   return tg('sendMessage',{chat_id:chatId,text:'✅ АККАУНТ УСПЕШНО СОЗДАН!\n\n👤 Юзернейм: @'+username+'\n🔐 Пароль / 2FA: '+password+'\n👑 Premium: 3 месяца\n🔴 Красная верификация: включена\n\n⚠️ Сохраните данные для входа.',reply_markup:tgKeyboard()});
