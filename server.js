@@ -790,7 +790,9 @@ async function coinsInvoice(chatId,coins,stars){
   const u=await getDoc('users',String(st.uid));
   if(!u)return ctg('sendMessage',{chat_id:chatId,text:'❌ Аккаунт не найден. Привяжите его заново.'});
   const finalStars=Boolean(u.scam)?stars*2:stars;
-
+  const payload='ekoool_coins_'+st.uid+'_'+coins+'_'+finalStars+'_'+Date.now();
+  await putDoc('telegram_coins_pending',String(chatId),{uid:st.uid,coins,stars:finalStars,payload,expires:Date.now()+15*60*1000});
+  return ctg('sendInvoice',{chat_id:chatId,title:'ЭКОкоины EKOOOL',description:coins+' ЭКОкоинов для @'+(u.username||u.id),payload,currency:'XTR',prices:[{label:coins+' ЭКОкоинов',amount:finalStars}]});
 }
 async function coinsBalance(chatId){
   const st=await getDoc('telegram_coins_state',String(chatId));
