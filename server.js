@@ -678,14 +678,16 @@ async function tg(method,body){
   if(!r.ok||!x.ok)throw new Error(x?.description||'Telegram API error');
   return x.result;
 }
-function tgKeyboard(){
-  return {inline_keyboard:[
+function tgKeyboard(chatId){
+  const rows=[
     [{text:'🟢 Состояние сервера',callback_data:'status'}],
     [{text:'💰 Баланс',callback_data:'balance'}],
     [{text:'⭐ Пополнить баланс',callback_data:'topup'}],
     [{text:'🎟 Активировать токен',callback_data:'redeem_token'}],
     [{text:'🛒 Купить персонально',callback_data:'personal_buy'}]
-  ]};
+  ];
+  if(chatId!=null&&isTgAdmin(chatId))rows.push([{text:'🛡️ Админ-панель',callback_data:'admin'}]);
+  return {inline_keyboard:rows};
 }
 async function tgBalance(chatId){
   const b=await getDoc('telegram_balances',String(chatId));
@@ -999,6 +1001,7 @@ async function tgAdminPanel(chatId){
     [{text:'➖ Списать ⭐',callback_data:'admin_sub'}],
     [{text:'🎁 Выдать аккаунт',callback_data:'admin_account'}],
     [{text:'🎟 Создать токен',callback_data:'admin_token'}],
+    [{text:'🧪 Тестовая покупка',callback_data:'admin_testpurchase'}],
     [{text:'🚫 Забанить',callback_data:'admin_ban'}],
     [{text:'✅ Разбанить',callback_data:'admin_unban'}],
     [{text:'⬅️ В меню',callback_data:'menu'}]
@@ -1224,6 +1227,7 @@ app.post('/api/telegram/webhook',async(req,res)=>{
       else if(cb.data==='admin_sub'){if(isTgAdmin(cb.from?.id))await tgAdminAction(cb.message.chat.id,'sub');}
       else if(cb.data==='admin_account'){if(isTgAdmin(cb.from?.id))await tgAdminAction(cb.message.chat.id,'account');}
       else if(cb.data==='admin_token'){if(isTgAdmin(cb.from?.id)){await putDoc('telegram_admin_token_state',String(cb.message.chat.id),{step:'amount',expires:Date.now()+5*60*1000});await tg('sendMessage',{chat_id:cb.message.chat.id,text:'🎟 Создание токена\n\nВведите сумму токена в ⭐ (1–100000):',reply_markup:{inline_keyboard:[[{text:'❌ Отмена',callback_data:'admin'}]]}});}}
+      else if(cb.data==='admin_testpurchase'){if(isTgAdmin(cb.from?.id))await tgTestPurchase(cb.message.chat.id);}
       else if(cb.data==='admin_ban'){if(isTgAdmin(cb.from?.id))await tgAdminAction(cb.message.chat.id,'ban');}
       else if(cb.data==='admin_unban'){if(isTgAdmin(cb.from?.id))await tgAdminAction(cb.message.chat.id,'unban');}
       else if(cb.data==='status')await tgStatus(cb.message.chat.id);
