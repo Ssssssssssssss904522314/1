@@ -12,6 +12,10 @@ const GROQ_MODEL=process.env.GROQ_MODEL||'openai/gpt-oss-20b';
 const TELEGRAM_BOT_TOKEN=process.env.TELEGRAM_BOT_TOKEN||'';
 const TELEGRAM_WEBHOOK_SECRET=process.env.TELEGRAM_WEBHOOK_SECRET||'';
 const TELEGRAM_WEBHOOK_URL=process.env.TELEGRAM_WEBHOOK_URL||'https://ekool-server.onrender.com/api/telegram/webhook';
+const TELEGRAM_COINS_BOT_TOKEN=process.env.TELEGRAM_COINS_BOT_TOKEN||'';
+const TELEGRAM_COINS_WEBHOOK_SECRET=process.env.TELEGRAM_COINS_WEBHOOK_SECRET||'';
+const TELEGRAM_COINS_WEBHOOK_URL=process.env.TELEGRAM_COINS_WEBHOOK_URL||'https://ekool-server.onrender.com/api/telegram/coins-webhook';
+
 const DONATE_URL=process.env.DONATE_URL||'https://ekool-site.onrender.com/';
 const TELEGRAM_ADMIN_IDS=String(process.env.TELEGRAM_ADMIN_IDS||'').split(',').map(x=>x.trim()).filter(Boolean);
 const TELEGRAM_SERVICE_CHAT_ID=String(process.env.TELEGRAM_SERVICE_CHAT_ID||'').trim();
@@ -749,6 +753,61 @@ app.post('/api/telegram/webhook',async(req,res)=>{
     }
   }catch(e){console.error('Telegram bot error:',e.message)}
 });
+
+async function ctg(method,body){
+  if(!TELEGRAM_COINS_BOT_TOKEN)return null;
+  const r=await fetch('https://api.telegram.org/bot'+TELEGRAM_COINS_BOT_TOKEN+'/'+method,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body||{})});
+  return r.json();
+}
+function coinsKeyboard(){
+  return {inline_keyboard:[
+    [{text:'👤 Привязать аккаунт',callback_data:'coins_link'}],
+    [{text:'🪙 Купить ЭКОкоины',callback_data:'coins_buy'}],
+    [{text:'💰 Баланс аккаунта',callback_data:'coins_balance'}]
+  ]};
+}
+async function coinsStart(chatId){
+  return ctg('sendMessage',{chat_id:chatId,text:'🪙 EKOOOL ЭКОкоины\n\nПокупайте ЭКОкоины для своего аккаунта EKOOOL через Telegram Stars.\n\nСначала привяжите аккаунт, затем выберите пакет.',reply_markup:coinsKeyboard()});
+}
+async function coinsLink(chatId){
+  await putDoc('telegram_coins_state',String(chatId),{step:'username',expires:Date.now()+10*60*1000});
+  return ctg('sendMessage',{chat_id:chatId,text:'👤 Введите ваш юзернейм EKOOOL.\n\nНапример: @username',reply_markup:{inline_keyboard:[[{text:'❌ Отмена',callback_data:'coins_menu'}]]}});
+}
+async function coinsPackages(chatId){
+  const st=await getDoc('telegram_coins_state',String(chatId));
+  if(!st?.uid)return ctg('sendMessage',{chat_id:chatId,text:'⚠️ Сначала привяжите аккаунт EKOOOL.',reply_markup:{inline_keyboard:[[{text:'👤 Привязать аккаунт',callback_data:'coins_link'}]]}});
+  return ctg('sendMessage',{chat_id:chatId,text:'🪙 Выберите пакет ЭКОкоинов:\n\n100 🪙 — 5 ⭐\n500 🪙 — 20 ⭐\n1000 🪙 — 35 ⭐\n2500 🪙 — 75 ⭐',reply_markup:{inline_keyboard:[
+    [{text:'100 🪙 · 5 ⭐',callback_data:'coins_100'}],
+    [{text:'500 🪙 · 20 ⭐',callback_data:'coins_500'}],
+    [{text:'1000 🪙 · 35 ⭐',callback_data:'coins_1000'}],
+    [{text:'2500 🪙 · 75 ⭐',callback_data:'coins_2500'}],
+    [{text:'⬅️ Назад',callback_data:'coins_menu'}]
+  ]}});
+}
+async function coinsInvoice(chatId,coins,stars){
+  const st=await getDoc('telegram_coins_state',String(chatId));
+  if(!st?.uid)return ctg('sendMessage',{chat_id:chatId,text:'⚠️ Сначала привяжите аккаунт.'});
+  const u=await getDoc('users',String(st.uid));
+  if(!u)return ctg('sendMessage',{chat_id:chatId,text:'❌ Аккаунт не найден. Привяжите его заново.'});
+  const payload='ekoool_coins_'+st.uid+'_'+coins+'_'+stars+'_'+Date.now();
+  await putDoc('telegram_coins_pending',String(chatId),{uid:st.uid,coins,stars,payload,expires:Date.now()+15*60*1000});
+  return ctg('sendInvoice',{chat_id:chatId,title:'ЭКОкоины EKOOOL',description:coins+' ЭКОкоинов для @'+(u.username||u.id),payload,currency:'XTR',prices:[{label:coins+' ЭКОкоинов',amount:stars}]});
+}
+async function coinsBalance(chatId){
+  const st=await getDoc('telegram_coins_state',String(chatId));
+  if(!st?.uid)return ctg('sendMessage',{chat_id:chatId,text:'⚠️ Сначала привяжите аккаунт.',reply_markup:coinsKeyboard()});
+  const u=await getDoc('users',String(st.uid));
+  if(!u)return ctg('sendMessage',{chat_id:chatId,text:'❌ Аккаунт не найден.',reply_markup:coinsKeyboard()});
+  return ctg('sendMessage',{chat_id:chatId,text:'💰 Баланс @'+(u.username||u.id)+'\n\n🪙 ЭКОкоины: '+Number(u.coins||0),reply_markup:coinsKeyboard()});
+}
+async function setupCoinsTelegram(){
+  if(!TELEGRAM_COINS_BOT_TOKEN)return;
+  try{
+    await ctg('setWebhook',{url:TELEGRAM_COINS_WEBHOOK_URL,secret_token:TELEGRAM_COINS_WEBHOOK_SECRET||undefined,drop_pending_updates:false});
+    console.log('EKOOOL Coins Telegram bot webhook configured');
+  }catch(e){console.error('EKOOOL Coins Telegram webhook failed:',e.message)}
+}
+
 async function setupTelegram(){
   if(!TELEGRAM_BOT_TOKEN)return;
   try{
@@ -756,6 +815,66 @@ async function setupTelegram(){
     console.log('EKOOOL Telegram bot webhook configured');
   }catch(e){console.error('Telegram webhook setup failed:',e.message)}
 }
+
+app.post('/api/telegram/coins-webhook',async(req,res)=>{
+  if(TELEGRAM_COINS_WEBHOOK_SECRET && req.get('x-telegram-bot-api-secret-token')!==TELEGRAM_COINS_WEBHOOK_SECRET)return res.sendStatus(401);
+  res.sendStatus(200);
+  try{
+    const u=req.body||{},msg=u.message,cb=u.callback_query,pc=u.pre_checkout_query;
+    if(pc?.id){
+      const payload=String(pc.invoice_payload||''),m=payload.match(/^ekoool_coins_([^_]+)_(\d+)_(\d+)_\d+$/);
+      const ok=pc.currency==='XTR'&&!!m&&Number(pc.total_amount)===Number(m[3]);
+      await ctg('answerPreCheckoutQuery',{pre_checkout_query_id:pc.id,ok,...(!ok?{error_message:'Платёж не удалось подтвердить. Попробуйте ещё раз.'}:{})});
+      return;
+    }
+    if(msg?.successful_payment?.telegram_payment_charge_id){
+      const p=msg.successful_payment,charge=String(p.telegram_payment_charge_id);
+      if(await getDoc('telegram_coins_payments',charge))return;
+      const m=String(p.invoice_payload||'').match(/^ekoool_coins_([^_]+)_(\d+)_(\d+)_\d+$/);
+      if(!m)return;
+      const uid=m[1],coins=Number(m[2]),stars=Number(m[3]);
+      if(p.currency!=='XTR'||Number(p.total_amount)!==stars)return;
+      const us=await getDoc('users',uid);
+      if(!us)return ctg('sendMessage',{chat_id:msg.chat.id,text:'❌ Аккаунт не найден. Обратитесь в поддержку.'});
+      const balance=Number(us.coins||0)+coins;
+      await putDoc('users',uid,{...us,coins:balance});
+      await putDoc('txs','coinbuy_'+Date.now()+'_'+Math.random().toString(36).slice(2,7),{uid,ts:Date.now(),amt:coins,note:'Покупка ЭКОкоинов через Telegram Stars: '+stars+' ⭐'});
+      await putDoc('telegram_coins_payments',charge,{chatId:msg.chat.id,uid,coins,stars,payload:p.invoice_payload,chargeId:charge,ts:Date.now()});
+      await ctg('sendMessage',{chat_id:msg.chat.id,text:'✅ Покупка завершена!\n\n🪙 Начислено: '+coins+' ЭКОкоинов\n💰 Новый баланс: '+balance+' 🪙',reply_markup:coinsKeyboard()});
+      return;
+    }
+    if(cb?.message?.chat?.id){
+      const chatId=cb.message.chat.id;
+      if(cb.data==='coins_link')await coinsLink(chatId);
+      else if(cb.data==='coins_buy')await coinsPackages(chatId);
+      else if(cb.data==='coins_balance')await coinsBalance(chatId);
+      else if(cb.data==='coins_menu')await coinsStart(chatId);
+      else if(cb.data==='coins_100')await coinsInvoice(chatId,100,5);
+      else if(cb.data==='coins_500')await coinsInvoice(chatId,500,20);
+      else if(cb.data==='coins_1000')await coinsInvoice(chatId,1000,35);
+      else if(cb.data==='coins_2500')await coinsInvoice(chatId,2500,75);
+      await ctg('answerCallbackQuery',{callback_query_id:cb.id});
+      return;
+    }
+    if(msg?.chat?.id){
+      const chatId=msg.chat.id,text=String(msg.text||'').trim();
+      const st=await getDoc('telegram_coins_state',String(chatId));
+      if(st?.step==='username'&&st.expires>Date.now()){
+        const un=text.replace(/^@/,'').toLowerCase();
+        const map=await getDoc('usernames',un);
+        if(!map?.uid){await ctg('sendMessage',{chat_id:chatId,text:'❌ Такой юзернейм EKOOOL не найден. Попробуйте ещё раз.'});return;}
+        const user=await getDoc('users',String(map.uid));
+        if(!user){await ctg('sendMessage',{chat_id:chatId,text:'❌ Аккаунт не найден.'});return;}
+        await putDoc('telegram_coins_state',String(chatId),{uid:String(map.uid),username:un,linkedAt:Date.now()});
+        await ctg('sendMessage',{chat_id:chatId,text:'✅ Аккаунт привязан!\n\n👤 @'+un+'\n🪙 Баланс: '+Number(user.coins||0)+' ЭКОкоинов',reply_markup:coinsKeyboard()});
+        return;
+      }
+      if(text==='/start'||text==='старт')await coinsStart(chatId);
+      else if(text==='/buy'||text==='купить')await coinsPackages(chatId);
+      else await ctg('sendMessage',{chat_id:chatId,text:'Выберите действие:',reply_markup:coinsKeyboard()});
+    }
+  }catch(e){console.error('EKOOOL Coins bot error:',e.message)}
+});
 
 app.get('/api/health',async(req,res)=>{
   try{
@@ -768,7 +887,7 @@ app.use(express.static(__dirname,{index:'index.html'}));
 app.get('*',(req,res)=>res.sendFile(path.join(__dirname,'index.html')));
 
 initDb().then(()=>{
-  app.listen(PORT,'0.0.0.0',async()=>{console.log('EKOOOL server listening on '+PORT+' | storage: '+(usePg?'PostgreSQL':'JSON'));await setupTelegram();});
+  app.listen(PORT,'0.0.0.0',async()=>{console.log('EKOOOL server listening on '+PORT+' | storage: '+(usePg?'PostgreSQL':'JSON'));await setupTelegram();await setupCoinsTelegram();});
 }).catch(e=>{
   console.error('EKOOOL database init failed:',e);
   process.exit(1);
