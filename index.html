@@ -404,7 +404,7 @@ async function chat(oid){clean();delete cache[oid];await loadGifts();let o=await
  const renderMessages=async()=>{
    const el=$('#ms');if(!el)return;
    const ss=await db.collection('msgs').where('chat','==',k).get();
-   const ms=ss.docs.map(d=>({...d.data(),id:d.id})).sort((a,b)=>a.ts-b.ts);
+   const ms=ss.docs.map(d=>({...d.data(),id:d.id})).sort((a,b)=>a.ts-b.ts);\n   const unread=ms.filter(m=>m.b===me.id&&!m.readAt);if(unread.length){const rt=Date.now();await Promise.all(unread.map(m=>db.doc('msgs/'+m.id).update({readAt:rt}).catch(()=>{})));unread.forEach(m=>m.readAt=rt)}
    const stranger=!o.bot&&ms.some(m=>m.a===oid)&&!ms.some(m=>m.a===me.id);
    const si=$('#strangerInfo');
    if(si){
@@ -423,7 +423,7 @@ async function chat(oid){clean();delete cache[oid];await loadGifts();let o=await
      const rhtml=reactions.length?'<div style="font-size:12px;margin-top:3px">'+reactions.map(x=>esc(x)).join(' ')+'</div>':'';
      const actions=m.a===me.id&&!m.deleted?`<div style="display:flex;gap:4px;margin-top:4px"><button class="ib" style="padding:3px 6px;font-size:10px" data-edit="${m.id}">✏️</button><button class="ib" style="padding:3px 6px;font-size:10px" data-del="${m.id}">🗑</button></div>`:'';
      const react='<div style="display:flex;gap:3px;margin-top:3px"><button class="ib" style="padding:2px 5px;font-size:10px" data-react="👍" data-mid="'+m.id+'">👍</button><button class="ib" style="padding:2px 5px;font-size:10px" data-react="❤️" data-mid="'+m.id+'">❤️</button><button class="ib" style="padding:2px 5px;font-size:10px" data-react="😂" data-mid="'+m.id+'">😂</button><button class="ib" style="padding:2px 5px;font-size:10px" data-react="🔥" data-mid="'+m.id+'">🔥</button></div>';
-     html.push(`<div class="m ${m.a===me.id?'me':''}" data-mid="${m.id}">${m.secret?'<span class="secret-badge">🔒</span>':''}${body}${rhtml}<small>${new Date(m.ts).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})}</small>${actions}${react}</div>`);
+     html.push(`<div class="m ${m.a===me.id?'me':''}" data-mid="${m.id}">${m.secret?'<span class="secret-badge">🔒</span>':''}${body}${rhtml}<small>${new Date(m.ts).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})}${m.a===me.id?(m.status==='failed'?' <span style="color:#e53935;font-weight:900" title="Не отправлено">❗</span>':m.status==='sending'?' <span title="Отправляется">🕘</span>':m.readAt?' <span title="Прочитано">✓✓</span>':' <span title="Отправлено">✓</span>'):''}</small>${actions}${react}</div>`);
    }
    el.innerHTML=html.join('');
    window.M=Object.fromEntries(ms.map(x=>[x.id,x]));el.querySelectorAll('[data-v]').forEach(b=>b.onclick=()=>giftView(M[b.dataset.v]));
