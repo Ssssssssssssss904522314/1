@@ -43,7 +43,12 @@ const pool=usePg?new Pool({
 }):null;
 
 async function initDb(){
-  if(!pool)return;
+  if(!pool){
+    if(fileDb.email_verifications)delete fileDb.email_verifications;
+    for(const id of Object.keys(fileCol('users'))){if(fileCol('users')[id]&&Object.prototype.hasOwnProperty.call(fileCol('users')[id],'email')){delete fileCol('users')[id].email}}
+    await persistFile();
+    return;
+  }
   await pool.query(`
     CREATE TABLE IF NOT EXISTS ekoool_kv(
       collection TEXT NOT NULL,
@@ -52,6 +57,8 @@ async function initDb(){
       PRIMARY KEY(collection,id)
     )
   `);
+  await pool.query("DELETE FROM ekoool_kv WHERE collection='email_verifications'");
+  await pool.query("UPDATE ekoool_kv SET data = data - 'email' WHERE collection='users' AND data ? 'email'");
   const n=await pool.query('SELECT COUNT(*)::int AS n FROM ekoool_kv');
   if(n.rows[0].n===0 && Object.keys(fileDb).length){
     const client=await pool.connect();
