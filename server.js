@@ -646,9 +646,15 @@ app.post('/api/telegram/webhook',async(req,res)=>{
       }
       return;
     }
-    if(channelPost?.chat?.id && String(channelPost.chat.id)===TELEGRAM_SERVICE_CHAT_ID){
+    if(channelPost?.chat?.id){
       const ct=String(channelPost.text||'').trim().toLowerCase();
-      if(ct==='/service'||ct==='/panel')await tgServicePanel(channelPost.chat.id);
+      if(ct==='/channelid'){
+        await tg('sendMessage',{chat_id:channelPost.chat.id,text:'🆔 ID этого канала: '+String(channelPost.chat.id)});
+        return;
+      }
+      if(String(channelPost.chat.id)===TELEGRAM_SERVICE_CHAT_ID){
+        if(ct==='/service'||ct==='/panel')await tgServicePanel(channelPost.chat.id);
+      }
       return;
     }
     if(msg?.chat?.id){
