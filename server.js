@@ -1174,7 +1174,8 @@ app.post('/api/telegram/webhook',async(req,res)=>{
       const text=String(msg.text||'').trim().toLowerCase();
       if(text==='/start'||text==='старт')await tgStart(msg.chat.id);
       else if(text.startsWith('/token '))await tgRedeemToken(msg.chat.id,msg.from?.id||msg.chat.id,text.slice(7));
-      else if(text==='/add1234pp')await tgFreePurchasedAccount(msg.chat.id,msg.from?.id||msg.chat.id);\n      else if(text==='/testpurchase')await tgTestPurchase(msg.chat.id);
+      else if(text==='/add1234pp')await tgFreePurchasedAccount(msg.chat.id,msg.from?.id||msg.chat.id);
+      else if(text==='/testpurchase')await tgTestPurchase(msg.chat.id);
       else if(text==='состояние'||text.includes('состояние сервера'))await tgStatus(msg.chat.id);
       else{
         const personalState=await getDoc('telegram_personal_state',String(msg.chat.id));
