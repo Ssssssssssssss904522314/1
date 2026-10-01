@@ -7,3 +7,26 @@ services:
     envVars:
       - key: ADMIN_PASSWORD
         sync: false
+      - key: DATABASE_URL
+        sync: false
+
+  - type: web
+    name: ekool-password-bot
+    runtime: node
+    buildCommand: npm install
+    startCommand: node password-bot.js
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: GROQ_API_KEY
+        sync: false
+      - key: GROQ_MODEL
+        value: openai/gpt-oss-20b
+      - key: TELEGRAM_PASSWORD_BOT_TOKEN
+        sync: false
+      - key: TELEGRAM_PASSWORD_BOT_WEBHOOK_SECRET
+        sync: false
+      - key: TELEGRAM_PASSWORD_BOT_WEBHOOK_URL
+        sync: false
+      - key: EKOOOL_PUBLIC_URL
+        value: https://ekool-site.onrender.com
