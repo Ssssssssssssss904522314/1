@@ -246,6 +246,33 @@ app.post('/api/telegram/link/claim',async(req,res)=>{
   }catch(e){res.status(500).json({error:e.message})}
 });
 
+async function loginCity(req){
+  try{
+    const forwarded=String(req.headers['x-forwarded-for']||'').split(',')[0].trim();
+    const ip=forwarded||String(req.ip||'').replace(/^::ffff:/,'');
+    if(!ip||ip==='127.0.0.1'||ip==='::1')return 'Город не определён';
+    const ac=new AbortController(),tm=setTimeout(()=>ac.abort(),3500);
+    const r=await fetch('https://ipapi.co/'+encodeURIComponent(ip)+'/json/',{signal:ac.signal,headers:{'User-Agent':'EKOOOL-BotRegistor/1.0'}});
+    clearTimeout(tm);
+    const x=await r.json().catch(()=>({}));
+    return String(x.city||x.region||'Город не определён').trim()||'Город не определён';
+  }catch(e){return 'Город не определён'}
+}
+app.post('/api/security/login-event',async(req,res)=>{
+  try{
+    const uid=String(req.body?.uid||'').trim(),proof=String(req.body?.proof||'').trim();
+    const u=await getDoc('users',uid);
+    if(!uid||!proof||!u||!u.passHash||proof!==u.passHash)return res.status(401).json({error:'Unauthorized'});
+    const device=String(req.body?.device||'Неизвестное устройство').trim().slice(0,180)||'Неизвестное устройство';
+    const city=await loginCity(req);
+    const kind=String(req.body?.kind||'login')==='registration'?'Регистрация':'Вход';
+    const username=u.username?'@'+u.username:u.id;
+    const text=(kind==='Регистрация'?'🆕 Регистрация аккаунта':'🔐 Выполнен вход в ваш аккаунт')+' в EKOOOL.\\nВремя: '+new Date().toLocaleString('ru-RU')+'\\n📱 Устройство: '+device+'\\n📍 Город: '+city+'\\n\\nЕсли это были не вы — напишите прямо в этом мессенджере владельцу @ekoool_9d1854c5dd.';
+    await putDoc('msgs','m'+Date.now()+crypto.randomBytes(3).toString('hex'),{chat:[uid,'botregistor'].sort().join('_'),a:'botregistor',b:uid,ts:Date.now(),type:'text',text,bot:true});
+    res.json({ok:true,city});
+  }catch(e){res.status(500).json({error:e.message||'Не удалось записать событие входа'})}
+});
+
 app.post('/api/auth/session',async(req,res)=>{
   try{
     const uid=String(req.body?.uid||'').trim(),proof=String(req.body?.proof||'').trim();
