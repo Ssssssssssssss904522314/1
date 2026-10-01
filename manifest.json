@@ -1,0 +1,15 @@
+{
+  "name":"EKOOOL",
+  "short_name":"EKOOOL",
+  "description":"Мессенджер EKOOOL",
+  "start_url":"/",
+  "scope":"/",
+  "display":"standalone",
+  "orientation":"portrait",
+  "background_color":"#f4f6fb",
+  "theme_color":"#3b6cff",
+  "lang":"ru",
+  "icons":[
+    {"src":"/icon.svg","sizes":"any","type":"image/svg+xml","purpose":"any maskable"}
+  ]
+}
