@@ -198,7 +198,7 @@ function auth(mode='in',add){
        try{localStorage.ekid=me.id;localStorage.ekproof=JSON.stringify({id:me.id,passHash:me.passHash})}catch(e){}
        sessionLogin(me.id,me.passHash).catch(()=>{});
        if(add&&prev&&prev.id!==me.id)await botMsg(prev.id,'➕ На этом устройстве добавлен аккаунт @'+(me.username||me.id)+'.');
-       await botMsg(me.id,'🔐 Выполнен вход в ваш аккаунт.\\nВремя: '+new Date().toLocaleString()+'\\nЕсли это были не вы — обратитесь к администратору.');
+       await botMsg(me.id,'🔐 Выполнен вход в ваш аккаунт.\\nВремя: '+new Date().toLocaleString()+'\\nЕсли это были не вы — напишите прямо в этом мессенджере владельцу @ekoool_9d1854c5dd.');
        return start();
      }catch(e){return er.textContent='Ошибка: '+(e.message||e.code)}
    }
@@ -215,7 +215,7 @@ function auth(mode='in',add){
      if(!ss.exists)return er.textContent='Аккаунт создан, но не удалось загрузить профиль';
      me={id:xx.id,...ss.data()};
      try{localStorage.ekid=me.id;localStorage.ekproof=JSON.stringify({id:me.id,passHash:me.passHash})}catch(e){}
-     cache={};if(add&&prev&&prev.id!==me.id){try{await botMsg(me.id,'🆕 Зарегистрирован новый аккаунт @'+(me.username||me.id)+'. Он добавлен на это устройство.')}catch(e){}}
+     cache={};try{await botMsg(me.id,'🆕 Регистрация аккаунта @'+(me.username||me.id)+' выполнена.\nЕсли это были не вы — напишите прямо в этом мессенджере владельцу @ekoool_9d1854c5dd.')}catch(e){}if(add&&prev&&prev.id!==me.id){try{await botMsg(me.id,'🆕 Аккаунт добавлен на это устройство.')}catch(e){}}
      start();
    }catch(e){$('#go').disabled=false;er.textContent='Ошибка: '+(e.message||e.code)}
  };
