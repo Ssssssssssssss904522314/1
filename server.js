@@ -350,8 +350,11 @@ async function tg(method,body){
 function tgKeyboard(){
   return {inline_keyboard:[
     [{text:'🟢 Состояние сервера',callback_data:'status'}],
-    [{text:'💰 Задонатить',url:DONATE_URL}]
+    [{text:'💰 Задонатить',callback_data:'donate'}]
   ]};
+}
+async function tgDonate(chatId){
+  return tg('sendMessage',{chat_id:chatId,text:'💰 Реквизиты для доната:\n\nКошелёк: t.me/send?start=IV5n4J5rUErM\n\nПринимаем все валюты! Будем рады даже центу! Все донаты пойдут на развитие мессенджера.',reply_markup:{inline_keyboard:[[{text:'💳 Открыть кошелёк',url:'https://t.me/send?start=IV5n4J5rUErM'}],[{text:'⬅️ Назад',callback_data:'menu'}]]}}); 
 }
 async function tgStart(chatId){
   return tg('sendMessage',{chat_id:chatId,text:'👋 Добро пожаловать в EKOOOL!\n\nВыберите действие:',reply_markup:tgKeyboard()});
@@ -379,7 +382,7 @@ app.post('/api/telegram/webhook',async(req,res)=>{
       else if(text==='состояние'||text.includes('состояние сервера'))await tgStatus(msg.chat.id);
       else await tg('sendMessage',{chat_id:msg.chat.id,text:'Выберите действие:',reply_markup:tgKeyboard()});
     }else if(cb?.message?.chat?.id){
-      if(cb.data==='status')await tgStatus(cb.message.chat.id);
+      if(cb.data==='status')await tgStatus(cb.message.chat.id);\n      else if(cb.data==='donate')await tgDonate(cb.message.chat.id);\n      else if(cb.data==='menu')await tgStart(cb.message.chat.id);
       await tg('answerCallbackQuery',{callback_query_id:cb.id});
     }
   }catch(e){console.error('Telegram bot error:',e.message)}
