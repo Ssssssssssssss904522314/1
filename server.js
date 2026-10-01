@@ -545,6 +545,16 @@ app.post('/api/telegram/webhook',async(req,res)=>{
       }
     }else if(cb?.message?.chat?.id){
       if(cb.data==='status')await tgStatus(cb.message.chat.id);
+      else if(cb.data==='balance')await tgBalance(cb.message.chat.id);
+      else if(cb.data==='topup')await tgTopup(cb.message.chat.id);
+      else if(cb.data==='topup_15')await tgTopupInvoice(cb.message.chat.id,15);
+      else if(cb.data==='topup_25')await tgTopupInvoice(cb.message.chat.id,25);
+      else if(cb.data==='topup_custom'){
+        await putDoc('telegram_topup_state',String(cb.message.chat.id),{expires:Date.now()+10*60*1000});
+        await tg('sendMessage',{chat_id:cb.message.chat.id,text:'💳 Введите сумму пополнения в звёздах числом.\n\nНапример: 50',reply_markup:{inline_keyboard:[[{text:'❌ Отмена',callback_data:'balance'}]]}});
+      }
+      else if(cb.data==='buy_balance_account')await tgConfirmBalancePurchase(cb.message.chat.id);
+      else if(cb.data==='confirm_balance_account')await tgBuyFromBalance(cb.message.chat.id,cb.from?.id||cb.message.chat.id);
       else if(cb.data==='donate')await tgDonate(cb.message.chat.id);
       else if(cb.data==='buy_account')await tgBuyAccountInfo(cb.message.chat.id);
       else if(cb.data==='buy_account_pay')await tgBuyAccountInvoice(cb.message.chat.id);
@@ -553,6 +563,7 @@ app.post('/api/telegram/webhook',async(req,res)=>{
       else if(cb.data==='donate_custom')await tgCustomAmount(cb.message.chat.id);
       else if(cb.data==='menu'){
         await deleteDoc('telegram_donate_state',String(cb.message.chat.id));
+        await deleteDoc('telegram_topup_state',String(cb.message.chat.id));
         await tgStart(cb.message.chat.id);
       }
       await tg('answerCallbackQuery',{callback_query_id:cb.id});
