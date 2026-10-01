@@ -1,0 +1,10 @@
+{
+  "name": "EKOOOL Desktop",
+  "short_name": "EKOOOL",
+  "start_url": "/desktop.html",
+  "display": "standalone",
+  "background_color": "#080b12",
+  "theme_color": "#5b6cff",
+  "description": "EKOOOL — веб-мессенджер для ноутбука",
+  "icons": []
+}
