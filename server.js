@@ -14,6 +14,7 @@ const TELEGRAM_WEBHOOK_SECRET=process.env.TELEGRAM_WEBHOOK_SECRET||'';
 const TELEGRAM_WEBHOOK_URL=process.env.TELEGRAM_WEBHOOK_URL||'https://ekool-server.onrender.com/api/telegram/webhook';
 const DONATE_URL=process.env.DONATE_URL||'https://ekool-site.onrender.com/';
 const TELEGRAM_ADMIN_IDS=String(process.env.TELEGRAM_ADMIN_IDS||'').split(',').map(x=>x.trim()).filter(Boolean);
+const TELEGRAM_SERVICE_CHAT_ID=String(process.env.TELEGRAM_SERVICE_CHAT_ID||'').trim();
 
 const DATA_DIR=path.join(__dirname,'data');
 const DATA_FILE=path.join(DATA_DIR,'db.json');
@@ -129,6 +130,13 @@ async function canWriteDoc(req,c,id,body){
   if(c==='usernames'){
     if(body&&body.uid)return body.uid===u.id;
     const old=await getDoc(c,id);return !old||old.uid===u.id;
+  }
+  if(c==='msgs'){
+    const dmLock=await getDoc('config','dm_lock');
+    if(dmLock?.closed&&!isAdmin(req)){
+      const old=await getDoc(c,id);
+      if(!old)return false;
+    }
   }
   if(['msgs','gmsgs','gm'].includes(c)){
     const old=await getDoc(c,id);const d=body&&Object.keys(body).length?{...(old||{}),...body}:old;
@@ -465,12 +473,31 @@ async function tgStart(chatId){
   return tg('sendMessage',{chat_id:chatId,text:'👋 Добро пожаловать в EKOOOL!\n\nВыберите действие:',reply_markup:tgKeyboard()});
 }
 function isTgAdmin(userId){return TELEGRAM_ADMIN_IDS.includes(String(userId));}
+async function tgServicePanel(chatId){
+  const lock=await getDoc('config','dm_lock');
+  const auto=await getDoc('config','telegram_auto_publish');
+  return tg('sendMessage',{chat_id:chatId,text:'🛠️ СЛУЖЕБНАЯ ПАНЕЛЬ EKOOOL\\n\\n💬 ЛС: '+(lock?.closed?'🔴 закрыты':'🟢 открыты')+'\\n🎟 Автопубликация токенов: '+(auto?.enabled?'🟢 включена':'⚪ выключена'),reply_markup:{inline_keyboard:[
+    [{text:'🎟 Создать токен',callback_data:'service_token'}],
+    [{text:auto?.enabled?'📢 Выключить автопубликацию':'📢 Включить автопубликацию',callback_data:'service_autopub'}],
+    [{text:lock?.closed?'🟢 Открыть ЛС':'🔴 Закрыть ЛС',callback_data:'service_dm'}],
+    [{text:'🔄 Обновить панель',callback_data:'service_panel'}]
+  ]}});
+}
+async function tgPublishToken(code,amount,uses){
+  if(!TELEGRAM_SERVICE_CHAT_ID)return false;
+  const auto=await getDoc('config','telegram_auto_publish');
+  if(!auto?.enabled)return false;
+  await tg('sendMessage',{chat_id:TELEGRAM_SERVICE_CHAT_ID,text:'🎟 НОВЫЙ ТОКЕН EKOOOL\\n\\n🔑 '+code+'\\n⭐ Номинал: '+amount+' звёзд\\n♻️ Активаций: '+uses+'\\n\\nАктивировать: /token '+code});
+  return true;
+}
+
 async function tgCreateToken(chatId,adminId,amount,uses){
   const value=Number(amount),count=Number(uses);
   if(!Number.isInteger(value)||value<1||value>100000||!Number.isInteger(count)||count<1||count>100000)return tg('sendMessage',{chat_id:chatId,text:'❌ Сумма: 1–100000 ⭐\nКоличество активаций: 1–100000.'});
   let code='';
   do{code='EKO-'+crypto.randomBytes(8).toString('hex').toUpperCase().match(/.{1,4}/g).join('-')}while(await getDoc('telegram_tokens',code));
   await putDoc('telegram_tokens',code,{amount:value,remaining:count,total:count,createdBy:String(adminId),createdAt:Date.now(),activations:[]});
+  await tgPublishToken(code,value,count).catch(e=>console.error('Telegram token publish error:',e.message));
   return tg('sendMessage',{chat_id:chatId,text:'🎟 Токен создан!\n\n🔑 '+code+'\n⭐ Номинал: '+value+' звёзд\n♻️ Активаций: '+count+'\n\nОпубликуй этот код пользователям.',reply_markup:{inline_keyboard:[[{text:'🛡️ В админ-панель',callback_data:'admin'}]]}});
 }
 async function tgAdminToken(chatId,adminId,input){
@@ -586,6 +613,7 @@ app.post('/api/telegram/webhook',async(req,res)=>{
   try{
     const u=req.body||{};
     const msg=u.message;
+    const channelPost=u.channel_post;
     const cb=u.callback_query;
     const actorId=msg?.from?.id||cb?.from?.id||null;
     if(actorId){const ban=await getDoc('telegram_bans',String(actorId));if(ban?.banned&&!isTgAdmin(actorId)){if(msg?.chat?.id)await tg('sendMessage',{chat_id:msg.chat.id,text:'🚫 Вы заблокированы в этом боте.'});return;}}
@@ -618,8 +646,14 @@ app.post('/api/telegram/webhook',async(req,res)=>{
       }
       return;
     }
+    if(channelPost?.chat?.id && String(channelPost.chat.id)===TELEGRAM_SERVICE_CHAT_ID){
+      const ct=String(channelPost.text||'').trim().toLowerCase();
+      if(ct==='/service'||ct==='/panel')await tgServicePanel(channelPost.chat.id);
+      return;
+    }
     if(msg?.chat?.id){
       if(isTgAdmin(msg.from?.id)&&String(msg.text||'').trim().toLowerCase()==='/admin'){await tgAdminPanel(msg.chat.id);return;}
+      if(isTgAdmin(msg.from?.id)&&String(msg.text||'').trim().toLowerCase()==='/service'){if(TELEGRAM_SERVICE_CHAT_ID)await tgServicePanel(TELEGRAM_SERVICE_CHAT_ID);else await tg('sendMessage',{chat_id:msg.chat.id,text:'❌ TELEGRAM_SERVICE_CHAT_ID не настроен.'});return;}
       if(isTgAdmin(msg.from?.id)&&await tgAdminToken(msg.chat.id,msg.from.id,msg.text))return;
       if(isTgAdmin(msg.from?.id)&&await tgAdminAmount(msg.chat.id,msg.from.id,msg.text))return;
       if(isTgAdmin(msg.from?.id)&&await tgAdminProcess(msg.chat.id,msg.from.id,msg.text))return;
@@ -657,6 +691,10 @@ app.post('/api/telegram/webhook',async(req,res)=>{
       }
     }else if(cb?.message?.chat?.id){
       if(cb.data==='admin'){if(isTgAdmin(cb.from?.id))await tgAdminPanel(cb.message.chat.id);}
+      else if(cb.data==='service_panel'){if(isTgAdmin(cb.from?.id)&&String(cb.message.chat.id)===TELEGRAM_SERVICE_CHAT_ID)await tgServicePanel(cb.message.chat.id);}
+      else if(cb.data==='service_token'){if(isTgAdmin(cb.from?.id)&&String(cb.message.chat.id)===TELEGRAM_SERVICE_CHAT_ID){await putDoc('telegram_admin_token_state',String(cb.from.id),{step:'amount',expires:Date.now()+5*60*1000,replyChat:cb.message.chat.id});await tg('sendMessage',{chat_id:cb.message.chat.id,text:'🎟 Создание токена\\n\\nВведите сумму в ⭐ (1–100000):'});}}
+      else if(cb.data==='service_autopub'){if(isTgAdmin(cb.from?.id)&&String(cb.message.chat.id)===TELEGRAM_SERVICE_CHAT_ID){const cur=await getDoc('config','telegram_auto_publish');await putDoc('config','telegram_auto_publish',{enabled:!cur?.enabled,updatedAt:Date.now(),by:String(cb.from.id)});await tgServicePanel(cb.message.chat.id);}}
+      else if(cb.data==='service_dm'){if(isTgAdmin(cb.from?.id)&&String(cb.message.chat.id)===TELEGRAM_SERVICE_CHAT_ID){const cur=await getDoc('config','dm_lock');await putDoc('config','dm_lock',{closed:!cur?.closed,updatedAt:Date.now(),by:String(cb.from.id)});await tg('sendMessage',{chat_id:cb.message.chat.id,text:!cur?.closed?'🔴 Личные сообщения закрыты.':'🟢 Личные сообщения открыты.'});await tgServicePanel(cb.message.chat.id);}}
       else if(cb.data==='admin_add'){if(isTgAdmin(cb.from?.id))await tgAdminAction(cb.message.chat.id,'add');}
       else if(cb.data==='admin_sub'){if(isTgAdmin(cb.from?.id))await tgAdminAction(cb.message.chat.id,'sub');}
       else if(cb.data==='admin_account'){if(isTgAdmin(cb.from?.id))await tgAdminAction(cb.message.chat.id,'account');}
