@@ -1118,9 +1118,9 @@ app.post('/api/telegram/webhook',async(req,res)=>{
       else{
         const personalState=await getDoc('telegram_personal_state',String(msg.chat.id));
         if(personalState?.expires>Date.now()){
-          const raw=String(msg.text||'').trim().replace(/\\s/g,'');
+          const raw=String(msg.text||'').trim().replace(/\s/g,'');
           if(personalState.step==='days_custom'){
-            if(/^\\d+$/.test(raw)&&Number(raw)>=1&&Number(raw)<=3650)await tgPersonalSetDays(msg.chat.id,Number(raw));
+            if(/^\d+$/.test(raw)&&Number(raw)>=1&&Number(raw)<=3650)await tgPersonalSetDays(msg.chat.id,Number(raw));
             else await tg('sendMessage',{chat_id:msg.chat.id,text:'❌ Введите целое число дней от 1 до 3650.'});
           }else if(personalState.step==='coins_custom'){
             if(/^\\d+$/.test(raw)&&Number(raw)>=0&&Number(raw)<=10000000)await tgPersonalSetCoins(msg.chat.id,Number(raw));
