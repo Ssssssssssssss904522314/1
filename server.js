@@ -337,7 +337,7 @@ const STORE_SESSION_TTL=30*24*60*60*1000;
 function storeTokenHash(t){return crypto.createHash('sha256').update(String(t)).digest('hex')}
 async function storeAuth(req){
   const h=String(req.headers.authorization||'');
-  const m=h.match(/^Bearer\\s+(.+)$/i);
+  const m=h.match(/^Bearer\s+(.+)$/i);
   if(m){
     const raw=m[1].trim();
     if(raw){
@@ -364,11 +364,11 @@ async function findStoreLoginUser(login){
   }
   const docs=await getCollection('users');
   const target=String(login||'').trim();
-  const normalized=target.replace(/\\s+/g,'');
+  const normalized=target.replace(/\s+/g,'');
   for(const x of docs){
     const u=x.data||{};
     const nums=[u.phone,u.phone2,u.phoneNumber,u.number].filter(Boolean).map(String);
-    if(nums.some(n=>n===target||n.replace(/\\s+/g,'')===normalized))return {id:String(x.id),...u};
+    if(nums.some(n=>n===target||n.replace(/\s+/g,'')===normalized))return {id:String(x.id),...u};
   }
   return null;
 }
@@ -389,7 +389,7 @@ app.post('/api/store/login',async(req,res)=>{
 });
 app.post('/api/store/logout',async(req,res)=>{
   try{
-    const h=String(req.headers.authorization||''),m=h.match(/^Bearer\\s+(.+)$/i);
+    const h=String(req.headers.authorization||''),m=h.match(/^Bearer\s+(.+)$/i);
     if(m)await deleteDoc('store_sessions',storeTokenHash(m[1].trim()));
     res.json({ok:true});
   }catch(e){res.status(500).json({error:e.message})}
