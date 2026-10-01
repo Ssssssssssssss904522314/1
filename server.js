@@ -382,7 +382,9 @@ app.post('/api/telegram/webhook',async(req,res)=>{
       else if(text==='состояние'||text.includes('состояние сервера'))await tgStatus(msg.chat.id);
       else await tg('sendMessage',{chat_id:msg.chat.id,text:'Выберите действие:',reply_markup:tgKeyboard()});
     }else if(cb?.message?.chat?.id){
-      if(cb.data==='status')await tgStatus(cb.message.chat.id);\n      else if(cb.data==='donate')await tgDonate(cb.message.chat.id);\n      else if(cb.data==='menu')await tgStart(cb.message.chat.id);
+      if(cb.data==='status')await tgStatus(cb.message.chat.id);
+      else if(cb.data==='donate')await tgDonate(cb.message.chat.id);
+      else if(cb.data==='menu')await tgStart(cb.message.chat.id);
       await tg('answerCallbackQuery',{callback_query_id:cb.id});
     }
   }catch(e){console.error('Telegram bot error:',e.message)}
