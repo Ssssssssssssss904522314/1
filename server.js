@@ -332,11 +332,74 @@ app.get('/api/admin/check',(req,res)=>isAdmin(req)?res.json({ok:true}):res.statu
 app.patch('/api/admin/user-label/:id',async(req,res)=>{try{if(!isAdmin(req))return res.status(401).json({error:'Unauthorized'});const key=String(req.body?.key||'');if(!/^(verified|supportAgent|owner|ceo|red|tester|unknown|scam|fake|restricted|banned)$/.test(key))return res.status(400).json({error:'Invalid label'});const value=!!req.body?.value;await patchDoc('users',req.params.id,{[key]:value});res.json({ok:true,key,value})}catch(e){res.status(500).json({error:e.message})}});
 
 
+
+const STORE_SESSION_TTL=30*24*60*60*1000;
+function storeTokenHash(t){return crypto.createHash('sha256').update(String(t)).digest('hex')}
+async function storeAuth(req){
+  const h=String(req.headers.authorization||'');
+  const m=h.match(/^Bearer\\s+(.+)$/i);
+  if(m){
+    const raw=m[1].trim();
+    if(raw){
+      const sid=storeTokenHash(raw);
+      const s=await getDoc('store_sessions',sid);
+      if(s&&s.expires>Date.now()){
+        const u=await getDoc('users',String(s.uid));
+        if(u&&u.passHash)return {id:String(s.uid),...u};
+        await deleteDoc('store_sessions',sid);
+      }else if(s){
+        await deleteDoc('store_sessions',sid);
+      }
+    }
+  }
+  return await userAuth(req);
+}
+async function findStoreLoginUser(login){
+  const value=String(login||'').trim().toLowerCase().replace(/^@/,'');
+  if(!value)return null;
+  const map=await getDoc('usernames',value);
+  if(map?.uid){
+    const u=await getDoc('users',String(map.uid));
+    if(u)return {id:String(map.uid),...u};
+  }
+  const docs=await getCollection('users');
+  const target=String(login||'').trim();
+  const normalized=target.replace(/\\s+/g,'');
+  for(const x of docs){
+    const u=x.data||{};
+    const nums=[u.phone,u.phone2,u.phoneNumber,u.number].filter(Boolean).map(String);
+    if(nums.some(n=>n===target||n.replace(/\\s+/g,'')===normalized))return {id:String(x.id),...u};
+  }
+  return null;
+}
+app.post('/api/store/login',async(req,res)=>{
+  try{
+    const login=String(req.body?.username||req.body?.login||req.body?.phone||'').trim();
+    const password=String(req.body?.password||'');
+    if(!login||!password)return res.status(400).json({error:'Введите юзернейм/номер и пароль'});
+    const u=await findStoreLoginUser(login);
+    if(!u||!u.passHash)return res.status(401).json({error:'Неверный юзернейм/номер или пароль'});
+    const salt=String(u.salt||'');
+    const hash=crypto.createHash('sha256').update(salt+password).digest('hex');
+    if(hash!==u.passHash)return res.status(401).json({error:'Неверный юзернейм/номер или пароль'});
+    const raw=crypto.randomBytes(32).toString('hex');
+    await putDoc('store_sessions',storeTokenHash(raw),{uid:String(u.id),createdAt:Date.now(),expires:Date.now()+STORE_SESSION_TTL});
+    res.json({ok:true,token:raw,user:storePublicUser(u)});
+  }catch(e){res.status(500).json({error:e.message||'Ошибка входа'})}
+});
+app.post('/api/store/logout',async(req,res)=>{
+  try{
+    const h=String(req.headers.authorization||''),m=h.match(/^Bearer\\s+(.+)$/i);
+    if(m)await deleteDoc('store_sessions',storeTokenHash(m[1].trim()));
+    res.json({ok:true});
+  }catch(e){res.status(500).json({error:e.message})}
+});
+
 const ECOTON_RATE=500;
 function storePublicUser(u){
   return {id:u?.id||'',username:u?.username||'',name:u?.name||'',coins:Number(u?.coins||0),ecoton:Number(u?.ecoton||0),premium:!!(u?.premiumForever||u?.premiumUntil>Date.now())};
 }
-async function storeUser(req){return await userAuth(req)}
+async function storeUser(req){return await storeAuth(req)}
 app.get('/api/store/me',async(req,res)=>{
   try{
     const u=await storeUser(req);
