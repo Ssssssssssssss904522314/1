@@ -784,6 +784,18 @@ async function coinsPackages(chatId){
     [{text:'⬅️ Назад',callback_data:'coins_menu'}]
   ]}});
 }
+async function coinsConfirm(chatId,coins,stars){
+  const st=await getDoc('telegram_coins_state',String(chatId));
+  if(!st?.uid)return ctg('sendMessage',{chat_id:chatId,text:'⚠️ Сначала привяжите аккаунт.'});
+  const u=await getDoc('users',String(st.uid));
+  if(!u)return ctg('sendMessage',{chat_id:chatId,text:'❌ Аккаунт не найден. Привяжите его заново.'});
+  const finalStars=Boolean(u.scam)?stars*2:stars;
+  await putDoc('telegram_coins_pending',String(chatId),{uid:st.uid,coins,stars:finalStars,expires:Date.now()+15*60*1000});
+  return ctg('sendMessage',{chat_id:chatId,text:'🪙 Подтверждение покупки\\n\\n👤 Аккаунт: @'+(u.username||u.id)+'\\n🪙 ЭКОкоинов: '+coins+'\\n⭐ Стоимость: '+finalStars+' ⭐'+(u.scam?'\\n⚠️ Для аккаунта с меткой «Скам» действует цена ×2.':'')+'\\n\\nПодтвердить покупку?',reply_markup:{inline_keyboard:[
+    [{text:'✅ Купить',callback_data:'coins_confirm_'+coins+'_'+finalStars}],
+    [{text:'❌ Отмена',callback_data:'coins_buy'}]
+  ]}});
+}
 async function coinsInvoice(chatId,coins,stars){
   const st=await getDoc('telegram_coins_state',String(chatId));
   if(!st?.uid)return ctg('sendMessage',{chat_id:chatId,text:'⚠️ Сначала привяжите аккаунт.'});
@@ -850,10 +862,19 @@ app.post('/api/telegram/coins-webhook',async(req,res)=>{
       else if(cb.data==='coins_buy')await coinsPackages(chatId);
       else if(cb.data==='coins_balance')await coinsBalance(chatId);
       else if(cb.data==='coins_menu')await coinsStart(chatId);
-      else if(cb.data==='coins_100')await coinsInvoice(chatId,100,5);
-      else if(cb.data==='coins_500')await coinsInvoice(chatId,500,20);
-      else if(cb.data==='coins_1000')await coinsInvoice(chatId,1000,35);
-      else if(cb.data==='coins_2500')await coinsInvoice(chatId,2500,75);
+      else if(cb.data==='coins_100')await coinsConfirm(chatId,100,5);
+      else if(cb.data==='coins_500')await coinsConfirm(chatId,500,20);
+      else if(cb.data==='coins_1000')await coinsConfirm(chatId,1000,35);
+      else if(cb.data==='coins_2500')await coinsConfirm(chatId,2500,75);
+      else if(/^coins_confirm_\\d+_\\d+$/.test(cb.data)){
+        const m=cb.data.match(/^coins_confirm_(\\d+)_(\\d+)$/);
+        const pending=await getDoc('telegram_coins_pending',String(chatId));
+        if(!pending||pending.expires<Date.now()||pending.coins!==Number(m[1])||pending.stars!==Number(m[2])){
+          await ctg('sendMessage',{chat_id:chatId,text:'❌ Покупка устарела. Выберите пакет заново.',reply_markup:coinsKeyboard()});
+        }else{
+          await coinsInvoice(chatId,Number(m[1]),Number(m[2]));
+        }
+      }
       await ctg('answerCallbackQuery',{callback_query_id:cb.id});
       return;
     }
