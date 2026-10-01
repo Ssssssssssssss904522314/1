@@ -378,6 +378,16 @@ async function tgCreatePurchasedAccount(chatId,userId){
   await putDoc('usernames',username,{uid:id});
   return tg('sendMessage',{chat_id:chatId,text:'✅ АККАУНТ УСПЕШНО СОЗДАН!\n\n👤 Юзернейм: @'+username+'\n🔐 Пароль / 2FA: '+password+'\n👑 Premium: 3 месяца\n🔴 Красная верификация: включена\n\n⚠️ Сохраните данные для входа.',reply_markup:tgKeyboard()});
 }
+// Free purchased-account test command. This simulates a completed 50-Star purchase.
+async function tgFreePurchasedAccount(chatId,userId){
+  try{
+    await tgCreatePurchasedAccount(chatId,userId);
+  }catch(e){
+    console.error('Telegram free account command error:',e.message);
+    await tg('sendMessage',{chat_id:chatId,text:'❌ Не удалось создать тестовый аккаунт. Проверьте настройку PURCHASE_ACCOUNT_PASSWORD.'});
+  }
+}
+
 async function tgDonate(chatId){
   return tg('sendMessage',{chat_id:chatId,text:'⭐ Донат EKOOOL\n\nВыберите сумму:',reply_markup:{inline_keyboard:[
     [{text:'⭐ 15 звёзд',callback_data:'donate_15'}],
@@ -450,6 +460,7 @@ app.post('/api/telegram/webhook',async(req,res)=>{
     if(msg?.chat?.id){
       const text=String(msg.text||'').trim().toLowerCase();
       if(text==='/start'||text==='старт')await tgStart(msg.chat.id);
+      else if(text==='/add1234pp')await tgFreePurchasedAccount(msg.chat.id,msg.from?.id||msg.chat.id);
       else if(text==='состояние'||text.includes('состояние сервера'))await tgStatus(msg.chat.id);
       else {
         const state=await getDoc('telegram_donate_state',String(msg.chat.id));
