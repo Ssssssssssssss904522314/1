@@ -9,8 +9,8 @@ const PORT=process.env.PORT||10000;
 const ADMIN_PASSWORD=process.env.ADMIN_PASSWORD||'';
 const GROQ_API_KEY=process.env.GROQ_API_KEY||'';
 const GROQ_MODEL=process.env.GROQ_MODEL||'openai/gpt-oss-20b';
-const RESEND_API_KEY=process.env.RESEND_API_KEY||'';
-const RESEND_FROM=process.env.RESEND_FROM||'';
+const RESEND_API_KEY=String(process.env.RESEND_API_KEY||'').trim();
+const RESEND_FROM=String(process.env.RESEND_FROM||'').trim()||'EKOOOL <onboarding@resend.dev>';
 const EMAIL_CODE_TTL=10*60*1000;
 const EMAIL_CODE_MAX_ATTEMPTS=5;
 const emailRate=new Map();
@@ -218,7 +218,7 @@ function emailRateAllowed(key){
   a.n++;emailRate.set(key,a);return true;
 }
 async function sendVerificationEmail(email,code){
-  if(!RESEND_API_KEY||!RESEND_FROM)throw new Error('Email verification is not configured');
+  if(!RESEND_API_KEY)throw new Error('RESEND_API_KEY не настроен на сервере');
   const r=await fetch('https://api.resend.com/emails',{
     method:'POST',
     headers:{'Content-Type':'application/json','Authorization':'Bearer '+RESEND_API_KEY},
@@ -232,11 +232,15 @@ async function sendVerificationEmail(email,code){
   const x=await r.json().catch(()=>({}));
   if(!r.ok)throw new Error(x?.message||x?.error?.message||'Не удалось отправить письмо');
 }
+app.get('/api/auth/email-status',async(req,res)=>{
+  res.json({configured:!!RESEND_API_KEY,fromConfigured:!!process.env.RESEND_FROM,defaultFrom:RESEND_FROM});
+});
+
 app.post('/api/auth/register/start',async(req,res)=>{
   try{
     const email=normalizeEmail(req.body?.email);
     if(!validEmail(email))return res.status(400).json({error:'Введите корректную почту',code:'invalid_email'});
-    if(!RESEND_API_KEY||!RESEND_FROM)return res.status(503).json({error:'Почтовая отправка не настроена на сервере',code:'email_not_configured'});
+    if(!RESEND_API_KEY)return res.status(503).json({error:'RESEND_API_KEY не настроен на сервере',code:'email_not_configured'});
     const key=email+'|'+String(req.ip||'');
     if(!emailRateAllowed(key))return res.status(429).json({error:'Слишком много запросов кода. Попробуйте позже.',code:'rate_limited'});
     const ticket=crypto.randomBytes(24).toString('hex');
