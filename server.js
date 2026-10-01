@@ -391,7 +391,7 @@ async function weatherData(city){
       const gj=await g.json();for(const x of (gj?.results||[]))all.push(x);
     }catch(e){}
   }
-  const place=all.find(x=>['city','town','village'].includes(String(x.feature_code||'').toLowerCase().replace(/^ppl[cr]?$/,'')))||all.find(x=>x.country_code==='RU')||all[0];
+  const place=all.find(x=>/^PPL/i.test(String(x.feature_code||'')))||all.find(x=>x.country_code==='RU')||all[0];
   if(!place)throw new Error('Город не найден. Попробуйте: «погода в Лабинске, Краснодарский край»');
   const u='https://api.open-meteo.com/v1/forecast?latitude='+encodeURIComponent(place.latitude)+'&longitude='+encodeURIComponent(place.longitude)+'&current=temperature_2m,apparent_temperature,weather_code,wind_speed_10m&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max&forecast_days=5&timezone=auto';
   const r=await fetch(u),x=await r.json();
