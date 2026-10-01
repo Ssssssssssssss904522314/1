@@ -227,18 +227,6 @@ async function sendVerificationEmail(email,code){
   const transporter=nodemailer.createTransport({host:SMTP_HOST,port:SMTP_PORT,secure:SMTP_PORT===465,auth:{user:SMTP_USER,pass:SMTP_PASS}});
   await transporter.sendMail({from:SMTP_FROM,to:email,subject:'Код подтверждения регистрации EKOOOL',text:'Ваш код подтверждения регистрации EKOOOL: '+code+'\n\nКод действует 10 минут. Если вы не регистрируетесь в EKOOOL, просто проигнорируйте это письмо.',html:'<div style="font-family:Arial,sans-serif;max-width:520px;margin:0 auto;padding:24px;color:#131826"><h2>EKOOOL</h2><p>Ваш код подтверждения регистрации:</p><div style="font-size:34px;font-weight:800;letter-spacing:8px;margin:20px 0">'+code+'</div><p>Код действует 10 минут. Если вы не регистрируетесь в EKOOOL, просто проигнорируйте это письмо.</p></div>'});
 }
-
-async function sendPasswordResetEmail(email,code){
-  if(!smtpConfigured)throw new Error('SMTP-почта не настроена на сервере');
-  const transporter=nodemailer.createTransport({host:SMTP_HOST,port:SMTP_PORT,secure:SMTP_PORT===465,auth:{user:SMTP_USER,pass:SMTP_PASS}});
-  await transporter.sendMail({
-    from:SMTP_FROM,
-    to:email,
-    subject:'Код восстановления пароля EKOOOL',
-    text:'Код восстановления пароля EKOOOL: '+code+'\\n\\nКод действует 10 минут. Если вы не запрашивали восстановление, просто проигнорируйте это письмо.',
-    html:'<div style="font-family:Arial,sans-serif;max-width:520px;margin:0 auto;padding:24px;color:#131826"><h2>EKOOOL</h2><p>Ваш код восстановления пароля:</p><div style="font-size:34px;font-weight:800;letter-spacing:8px;margin:20px 0">'+code+'</div><p>Код действует 10 минут. Если вы не запрашивали восстановление, просто проигнорируйте это письмо.</p></div>'
-  });
-}
 app.get('/api/auth/email-status',async(req,res)=>{
   res.json({configured:smtpConfigured,host:SMTP_HOST,port:SMTP_PORT,userConfigured:!!SMTP_USER,fromConfigured:!!SMTP_FROM});
 });
@@ -627,75 +615,6 @@ async function tgStarInvoice(chatId,stars){
     prices:[{label:'Донат EKOOOL',amount}]
   });
 }
-
-// ---- Telegram AI password recovery ----
-function tgRecoveryNormalizeText(v){return String(v||'').trim()}
-function tgRecoveryHash(chatId,code){return crypto.createHash('sha256').update(String(chatId)+':'+String(code)).digest('hex')}
-function tgRecoveryNewPassword(){const alphabet='ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789';let s='EK';const b=crypto.randomBytes(10);for(let i=0;i<10;i++)s+=alphabet[b[i]%alphabet.length];return s}
-function tgRecoveryMaskEmail(email){const e=String(email||'');const p=e.split('@');if(p.length!==2)return'e-mail';const n=p[0],d=p[1];const left=n.length<=2?n[0]+'*':n.slice(0,2)+'***';return left+'@'+d}
-async function tgInvalidateSessions(uid){const docs=await getCollection('sessions');for(const d of docs){if(String(d.data?.uid)===String(uid))await deleteDoc('sessions',d.id)}}
-async function tgAiIntent(text){
-  const raw=String(text||'').trim();
-  if(!raw)return{intent:'other',confidence:1};
-  if(!GROQ_API_KEY)return{intent:'other',confidence:0};
-  try{
-    const out=await openAIText(
-      'Ты классификатор намерений Telegram-бота EKOOOL. Определи, хочет ли пользователь восстановить или сменить пароль из-за того, что не помнит/забыл пароль или не может войти. Отвечай ТОЛЬКО JSON без markdown: {"intent":"password_reset"|"other","confidence":0..1}. Учитывай смысл, разговорные фразы, опечатки и русский язык. Не считай просьбой о восстановлении фразы про чужой пароль, пароль приложения, Wi-Fi, почту или посторонние сервисы.',
-      [{role:'user',content:raw}]
-    );
-    const m=String(out).match(/\{[\s\S]*\}/);if(!m)return{intent:'other',confidence:0};
-    const j=JSON.parse(m[0]);return{intent:j.intent==='password_reset'?'password_reset':'other',confidence:Math.max(0,Math.min(1,Number(j.confidence)||0))};
-  }catch(e){console.error('Telegram AI intent error:',e.message);return{intent:'other',confidence:0}}
-}
-async function tgPasswordRecoveryStart(chatId){
-  await putDoc('telegram_password_recovery',String(chatId),{step:'username',expires:Date.now()+10*60*1000,attempts:0,startedAt:Date.now()});
-  return tg('sendMessage',{chat_id:chatId,text:'🔐 Похоже, ты хочешь восстановить пароль EKOOOL.\n\nНапиши свой юзернейм EKOOOL, например: @username\n\nЕсли передумал — напиши «отмена».'});
-}
-async function tgPasswordRecoveryMessage(chatId,text){
-  const state=await getDoc('telegram_password_recovery',String(chatId));
-  if(!state||state.expires<=Date.now()){await deleteDoc('telegram_password_recovery',String(chatId));return false}
-  const raw=tgRecoveryNormalizeText(text),low=raw.toLowerCase();
-  if(['отмена','cancel','нет','no'].includes(low)){await deleteDoc('telegram_password_recovery',String(chatId));await tg('sendMessage',{chat_id:chatId,text:'Окей, восстановление пароля отменено.',reply_markup:tgKeyboard()});return true}
-  if(state.step==='confirm'){
-    if(['да','yes','ага','точно','хочу'].includes(low)){return tgPasswordRecoveryStart(chatId).then(()=>true)}
-    await tg('sendMessage',{chat_id:chatId,text:'Напиши «да», если хочешь восстановить пароль, или «нет» — чтобы отменить.'});return true;
-  }
-  if(state.step==='username'){
-    const un=raw.replace(/^@/,'').trim().toLowerCase();
-    if(!/^[a-z][a-z0-9_]{3,19}$/.test(un)){await tg('sendMessage',{chat_id:chatId,text:'❌ Нужен юзернейм EKOOOL из английских букв, цифр и _. Попробуй ещё раз.'});return true}
-    const map=await getDoc('usernames',un),uid=map?.uid?String(map.uid):'';
-    if(!uid){await tg('sendMessage',{chat_id:chatId,text:'❌ Такой юзернейм EKOOOL не найден. Проверь @username и отправь ещё раз.'});return true}
-    const user=await getDoc('users',uid);
-    if(!user){await tg('sendMessage',{chat_id:chatId,text:'❌ Аккаунт не найден.'});return true}
-    const email=normalizeEmail(user.email);
-    if(!validEmail(email)){await deleteDoc('telegram_password_recovery',String(chatId));return tg('sendMessage',{chat_id:chatId,text:'⚠️ У этого аккаунта нет подтверждённой почты. Автоматическое восстановление через Telegram недоступно. Обратись в поддержку.'}).then(()=>true)}
-    if(!smtpConfigured){await deleteDoc('telegram_password_recovery',String(chatId));return tg('sendMessage',{chat_id:chatId,text:'⚠️ Сервис почты EKOOOL сейчас не настроен. Восстановление временно недоступно.'}).then(()=>true)}
-    const ticket=crypto.randomBytes(24).toString('hex'),code=String(crypto.randomInt(100000,1000000));
-    await putDoc('telegram_password_recovery',String(chatId),{step:'code',uid,username:un,email,codeHash:tgRecoveryHash(ticket,code),ticket,expires:Date.now()+10*60*1000,attempts:0});
-    try{await sendPasswordResetEmail(email,code)}catch(e){await deleteDoc('telegram_password_recovery',String(chatId));console.error('Telegram password recovery email error:',e.message);return tg('sendMessage',{chat_id:chatId,text:'❌ Не удалось отправить код на почту. Попробуй позже.'}).then(()=>true)}
-    await tg('sendMessage',{chat_id:chatId,text:'📩 Код восстановления отправлен на почту '+tgRecoveryMaskEmail(email)+'.\n\nВведи сюда 6 цифр из письма. Код действует 10 минут.'});
-    return true;
-  }
-  if(state.step==='code'){
-    if(!/^\d{6}$/.test(raw)){await tg('sendMessage',{chat_id:chatId,text:'❌ Отправь именно 6 цифр из письма.'});return true}
-    const expected=tgRecoveryHash(state.ticket,raw),actual=String(state.codeHash||'');
-    if(actual.length!==expected.length||!crypto.timingSafeEqual(Buffer.from(expected),Buffer.from(actual))){
-      const attempts=Number(state.attempts||0)+1;
-      if(attempts>=5){await deleteDoc('telegram_password_recovery',String(chatId));await tg('sendMessage',{chat_id:chatId,text:'❌ Слишком много неверных попыток. Запусти восстановление заново.'});return true}
-      await patchDoc('telegram_password_recovery',String(chatId),{attempts});
-      await tg('sendMessage',{chat_id:chatId,text:'❌ Неверный код. Осталось попыток: '+(5-attempts)+'.'});return true;
-    }
-    const user=await getDoc('users',String(state.uid));
-    if(!user){await deleteDoc('telegram_password_recovery',String(chatId));await tg('sendMessage',{chat_id:chatId,text:'❌ Аккаунт больше не найден.'});return true}
-    const password=tgRecoveryNewPassword(),salt=crypto.randomBytes(8).toString('hex'),passHash=crypto.createHash('sha256').update(salt+password).digest('hex');
-    await patchDoc('users',String(state.uid),{salt,passHash,lastSeen:Date.now()});
-    await tgInvalidateSessions(String(state.uid));
-    await deleteDoc('telegram_password_recovery',String(chatId));
-    await tg('sendMessage',{chat_id:chatId,text:'✅ Пароль EKOOOL успешно изменён!\n\n👤 Юзернейм: @'+state.username+'\n🔐 Новый пароль: '+password+'\n\nТеперь войди в EKOOOL. Не передавай этот пароль другим людям.',reply_markup:tgKeyboard()});
-    return true;
-  }
-  return false;
-}
 async function tgStart(chatId){
   return tg('sendMessage',{chat_id:chatId,text:'👋 Добро пожаловать в EKOOOL!\n\nВыберите действие:',reply_markup:tgKeyboard()});
 }
@@ -905,32 +824,12 @@ app.post('/api/telegram/webhook',async(req,res)=>{
       if(isTgAdmin(msg.from?.id)&&await tgAdminToken(msg.chat.id,msg.from.id,msg.text))return;
       if(isTgAdmin(msg.from?.id)&&await tgAdminAmount(msg.chat.id,msg.from.id,msg.text))return;
       if(isTgAdmin(msg.from?.id)&&await tgAdminProcess(msg.chat.id,msg.from.id,msg.text))return;
-      const rawText=String(msg.text||'').trim();
-      const text=rawText.toLowerCase();
-      if(text==='/reset'||text==='/password'||text==='восстановить пароль'){
-        await tgPasswordRecoveryStart(msg.chat.id);
-        return;
-      }
-      const activeRecovery=await getDoc('telegram_password_recovery',String(msg.chat.id));
-      if(activeRecovery?.expires>Date.now()){
-        await tgPasswordRecoveryMessage(msg.chat.id,rawText);
-        return;
-      }
+      const text=String(msg.text||'').trim().toLowerCase();
       if(text==='/start'||text==='старт')await tgStart(msg.chat.id);
       else if(text.startsWith('/token '))await tgRedeemToken(msg.chat.id,msg.from?.id||msg.chat.id,text.slice(7));
       else if(text==='/add1234pp')await tgFreePurchasedAccount(msg.chat.id,msg.from?.id||msg.chat.id);
       else if(text==='состояние'||text.includes('состояние сервера'))await tgStatus(msg.chat.id);
       else{
-        const intent=await tgAiIntent(rawText);
-        if(intent.intent==='password_reset'&&intent.confidence>=0.78){
-          await tgPasswordRecoveryStart(msg.chat.id);
-          return;
-        }
-        if(intent.intent==='password_reset'&&intent.confidence>=0.48){
-          await putDoc('telegram_password_recovery',String(msg.chat.id),{step:'confirm',expires:Date.now()+10*60*1000,attempts:0});
-          await tg('sendMessage',{chat_id:msg.chat.id,text:'🤖 Я правильно понял, что ты не помнишь пароль EKOOOL и хочешь его восстановить?\n\nОтветь «да» или «нет».'});
-          return;
-        }
         const topupState=await getDoc('telegram_topup_state',String(msg.chat.id));
         if(topupState?.expires>Date.now()){
           const raw=String(msg.text||'').trim().replace(/\s/g,'');
