@@ -273,6 +273,28 @@ app.post('/api/security/login-event',async(req,res)=>{
   }catch(e){res.status(500).json({error:e.message||'Не удалось записать событие входа'})}
 });
 
+app.post('/api/security/transaction-event',async(req,res)=>{
+  try{
+    const actor=await userAuth(req);
+    if(!actor)return res.status(401).json({error:'Unauthorized'});
+    const targetId=String(req.body?.targetId||actor.id).trim();
+    const amount=Number(req.body?.amount);
+    if(!targetId||!(amount<0))return res.status(400).json({error:'Invalid transaction'});
+    const target=await getDoc('users',targetId);
+    if(!target)return res.status(404).json({error:'User not found'});
+    const device=String(req.body?.device||'Неизвестное устройство').trim().slice(0,180)||'Неизвестное устройство';
+    const city=await loginCity(req);
+    const note=String(req.body?.note||'Списание коинов').trim().slice(0,240)||'Списание коинов';
+    const when=new Date().toLocaleString('ru-RU');
+    const targetName=target.username?'@'+target.username:(target.name||target.id);
+    const actorName=actor.username?'@'+actor.username:(actor.name||actor.id);
+    const who=actor.id===targetId?targetName:(targetName+' (действие '+actorName+')');
+    const text='💸 Списание ЕКОКоинов\n\n👤 Аккаунт: '+who+'\n💰 Сумма: '+Math.abs(amount)+' ЕКОКоинов\n📍 Куда/за что: '+note+'\n🕒 Когда: '+when+'\n📱 Устройство: '+device+'\n📍 Геопозиция: '+city+' (примерно по IP)';
+    await putDoc('msgs','m'+Date.now()+crypto.randomBytes(3).toString('hex'),{chat:[targetId,'tranzaction'].sort().join('_'),a:'tranzaction',b:targetId,ts:Date.now(),type:'text',text,bot:true});
+    res.json({ok:true,city});
+  }catch(e){res.status(500).json({error:e.message||'Не удалось записать транзакцию'})}
+});
+
 app.post('/api/auth/session',async(req,res)=>{
   try{
     const uid=String(req.body?.uid||'').trim(),proof=String(req.body?.proof||'').trim();
