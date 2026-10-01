@@ -287,7 +287,7 @@ app.post('/api/auth/register/complete',async(req,res)=>{
     setSessionCookie(res,await createSession(id));
     res.json({ok:true,id});
   }catch(e){res.status(500).json({error:e.message||'Не удалось зарегистрировать аккаунт',code:'registration_failed'})}
-}
+});
 
 app.post('/api/auth/session',async(req,res)=>{
   try{
