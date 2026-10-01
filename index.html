@@ -384,7 +384,7 @@ async function chat(oid){clean();delete cache[oid];await loadGifts();let o=await
     try{
       const enc=await secretEncrypt(raw,p.text||'');
       const id='m'+Date.now()+Math.random().toString(36).slice(2,6);
-      await db.doc('msgs/'+id).set({chat:cid(me.id,oid),a:me.id,b:oid,ts:Date.now(),type:'text',secret:true,iv:enc.iv,ct:enc.ct});
+      const sr=db.doc('msgs/'+id);await sr.set({chat:cid(me.id,oid),a:me.id,b:oid,ts:Date.now(),type:'text',secret:true,iv:enc.iv,ct:enc.ct,status:'sending'});await sr.update({status:'sent',sentAt:Date.now()});
       return true;
     }catch(e){alert('Не удалось зашифровать сообщение: '+(e.message||e));return false}
   }
