@@ -350,11 +350,27 @@ async function tg(method,body){
 function tgKeyboard(){
   return {inline_keyboard:[
     [{text:'🟢 Состояние сервера',callback_data:'status'}],
-    [{text:'💰 Задонатить',callback_data:'donate'}]
+    [{text:'⭐ Задонатить звёздами',callback_data:'donate'}]
   ]};
 }
 async function tgDonate(chatId){
-  return tg('sendMessage',{chat_id:chatId,text:'💰 Реквизиты для доната:\n\nКошелёк: t.me/send?start=IV5n4J5rUErM\n\nПринимаем все валюты! Будем рады даже центу! Все донаты пойдут на развитие мессенджера.',reply_markup:{inline_keyboard:[[{text:'💳 Открыть кошелёк',url:'https://t.me/send?start=IV5n4J5rUErM'}],[{text:'⬅️ Назад',callback_data:'menu'}]]}}); 
+  return tg('sendMessage',{chat_id:chatId,text:'⭐ Донат EKOOOL\n\nВыберите сумму:',reply_markup:{inline_keyboard:[
+    [{text:'⭐ 15 звёзд',callback_data:'donate_15'}],
+    [{text:'⭐ 25 звёзд',callback_data:'donate_25'}],
+    [{text:'⬅️ Назад',callback_data:'menu'}]
+  ]}});
+}
+async function tgStarInvoice(chatId,stars){
+  const amount=Number(stars);
+  if(![15,25].includes(amount))return;
+  return tg('sendInvoice',{
+    chat_id:chatId,
+    title:'Донат EKOOOL',
+    description:'Поддержка развития мессенджера EKOOOL',
+    payload:'ekoool_donate_'+amount+'_'+Date.now(),
+    currency:'XTR',
+    prices:[{label:'Донат EKOOOL',amount}]
+  });
 }
 async function tgStart(chatId){
   return tg('sendMessage',{chat_id:chatId,text:'👋 Добро пожаловать в EKOOOL!\n\nВыберите действие:',reply_markup:tgKeyboard()});
@@ -376,6 +392,25 @@ app.post('/api/telegram/webhook',async(req,res)=>{
     const u=req.body||{};
     const msg=u.message;
     const cb=u.callback_query;
+    const pc=u.pre_checkout_query;
+    if(pc?.id){
+      const ok=pc.currency==='XTR' && [15,25].includes(Number(pc.total_amount)) && String(pc.invoice_payload||'').startsWith('ekoool_donate_');
+      await tg('answerPreCheckoutQuery',{pre_checkout_query_id:pc.id,ok,...(!ok?{error_message:'Не удалось подтвердить донат. Попробуйте ещё раз.'}:{})});
+      return;
+    }
+    if(msg?.successful_payment?.telegram_payment_charge_id){
+      const p=msg.successful_payment;
+      await putDoc('telegram_donations',p.telegram_payment_charge_id,{
+        chatId:msg.chat.id,
+        userId:msg.from?.id||null,
+        stars:p.total_amount,
+        payload:p.invoice_payload,
+        chargeId:p.telegram_payment_charge_id,
+        ts:Date.now()
+      });
+      await tg('sendMessage',{chat_id:msg.chat.id,text:'⭐ Спасибо за донат!\n\nВы поддержали развитие EKOOOL на '+p.total_amount+' звёзд. ❤️',reply_markup:tgKeyboard()});
+      return;
+    }
     if(msg?.chat?.id){
       const text=String(msg.text||'').trim().toLowerCase();
       if(text==='/start'||text==='старт')await tgStart(msg.chat.id);
@@ -384,6 +419,8 @@ app.post('/api/telegram/webhook',async(req,res)=>{
     }else if(cb?.message?.chat?.id){
       if(cb.data==='status')await tgStatus(cb.message.chat.id);
       else if(cb.data==='donate')await tgDonate(cb.message.chat.id);
+      else if(cb.data==='donate_15')await tgStarInvoice(cb.message.chat.id,15);
+      else if(cb.data==='donate_25')await tgStarInvoice(cb.message.chat.id,25);
       else if(cb.data==='menu')await tgStart(cb.message.chat.id);
       await tg('answerCallbackQuery',{callback_query_id:cb.id});
     }
