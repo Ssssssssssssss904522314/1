@@ -106,9 +106,42 @@ async function getCollection(c){
   return r.rows.map(x=>({id:x.id,data:x.data}));
 }
 
+const SESSION_COOKIE='__Host-EKOOOL-SESSION';
+const SESSION_TTL=30*24*60*60*1000;
+function readCookie(req,name){
+  const raw=String(req.headers.cookie||'');
+  for(const part of raw.split(';')){
+    const i=part.indexOf('=');
+    if(i<0)continue;
+    if(part.slice(0,i).trim()===name)return decodeURIComponent(part.slice(i+1).trim());
+  }
+  return '';
+}
+const sessionHash=t=>crypto.createHash('sha256').update(String(t)).digest('hex');
+function setSessionCookie(res,token){
+  res.setHeader('Set-Cookie',SESSION_COOKIE+'='+encodeURIComponent(token)+'; Max-Age='+Math.floor(SESSION_TTL/1000)+'; Path=/; Secure; HttpOnly; SameSite=Lax');
+}
+function clearSessionCookie(res){
+  res.setHeader('Set-Cookie',SESSION_COOKIE+'=; Max-Age=0; Path=/; Secure; HttpOnly; SameSite=Lax');
+}
+async function createSession(uid){
+  const token=crypto.randomBytes(32).toString('hex'),sid=sessionHash(token);
+  await putDoc('sessions',sid,{uid:String(uid),expires:Date.now()+SESSION_TTL});
+  return token;
+}
+async function sessionAuth(req){
+  const token=readCookie(req,SESSION_COOKIE);
+  if(!token)return null;
+  const sid=sessionHash(token),s=await getDoc('sessions',sid);
+  if(!s||s.expires<Date.now()){if(s)await deleteDoc('sessions',sid);return null}
+  const u=await getDoc('users',String(s.uid));
+  return u&&u.passHash?{id:String(s.uid),...u}:null;
+}
 function adminToken(){return crypto.createHmac('sha256',ADMIN_PASSWORD).update('ekoool-admin').digest('hex')}
 function isAdmin(req){return !!ADMIN_PASSWORD&&(req.headers.authorization||'')==='Bearer '+adminToken()}
 async function userAuth(req){
+  const session=await sessionAuth(req);
+  if(session)return session;
   const uid=String(req.headers['x-ekoool-user']||'').trim();
   const proof=String(req.headers['x-ekoool-proof']||'').trim();
   if(!uid||!proof)return null;
@@ -170,6 +203,30 @@ app.use((req,res,next)=>{
   next();
 });
 
+app.post('/api/auth/session',async(req,res)=>{
+  try{
+    const uid=String(req.body?.uid||'').trim(),proof=String(req.body?.proof||'').trim();
+    const u=await getDoc('users',uid);
+    if(!uid||!proof||!u||!u.passHash||proof!==u.passHash)return res.status(401).json({error:'Unauthorized'});
+    setSessionCookie(res,await createSession(uid));
+    res.json({ok:true,id:uid});
+  }catch(e){res.status(500).json({error:e.message})}
+});
+app.get('/api/auth/session',async(req,res)=>{
+  try{
+    const u=await userAuth(req);
+    if(!u)return res.status(401).json({error:'Unauthorized'});
+    res.json({ok:true,id:u.id});
+  }catch(e){res.status(500).json({error:e.message})}
+});
+app.post('/api/auth/logout',async(req,res)=>{
+  try{
+    const token=readCookie(req,SESSION_COOKIE);
+    if(token)await deleteDoc('sessions',sessionHash(token));
+    clearSessionCookie(res);
+    res.json({ok:true});
+  }catch(e){clearSessionCookie(res);res.status(500).json({error:e.message})}
+});
 app.post('/api/admin/login',(req,res)=>{
   if(!ADMIN_PASSWORD)return res.status(503).json({error:'ADMIN_PASSWORD не настроен'});
   if(!adminLoginAllowed(req.ip))return res.status(429).json({error:'Слишком много попыток. Повторите позже.'});
