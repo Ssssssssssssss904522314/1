@@ -703,7 +703,7 @@ async function admin(){if(!canAdmin())return me?home():auth();clean();
   document.querySelectorAll('.row').forEach(r=>r.onclick=()=>adminUser(r.dataset.id))};
  $('#q').oninput=draw;draw()}
 async function adminUser(id){cache={};const u=await getUser(id);if(!u)return admin();if(!canAdmin())return home();if(u.admin&&!isAdmin){alert('Нельзя менять другого администратора');return admin()}
- const L={verified:'✔ Галочка',owner:'👤❗ Владелец',ceo:'👑 CEO',red:'🔴 Красная галочка',tester:'🧪 Тестер',scam:'⚠️ Скам',fake:'🎭 Фейк',restricted:'🔒 Ограничить доступ',banned:'⛔ Бан'},st=bad(u);
+ const L={verified:'✔ Галочка',owner:'👤❗ Владелец',ceo:'👑 CEO',red:'🔴 Красная галочка',tester:'🧪 Тестер',unknown:'❓ Неизвестный пользователь',scam:'⚠️ Скам',fake:'🎭 Фейк',restricted:'🔒 Ограничить доступ',banned:'⛔ Бан'},st=bad(u);
  app.innerHTML=`<div class="top"><button class="ib" id="bk">←</button><h1>${esc(handle(u))}</h1></div><div class="body c"><div style="display:flex;justify-content:center">${ava(u,80)}</div>
  <p><b>${nameV(u)}</b><br><span class="note">${esc(u.id)}${isAdmin&&u.phone?' · '+esc(u.phone):''}</span></p>${st?`<div class="warn">${esc(st)}</div>`:''}${u.restricted?'<div class="warn">Доступ ограничен: нельзя писать</div>':''}
  <div style="display:grid;gap:8px">${Object.keys(L).filter(k=>k!=='owner'||isAdmin).map(k=>`<button class="ib" data-k="${k}">${L[k]}: ${u[k]?'СНЯТЬ':'выдать'}</button>`).join('')}</div>
