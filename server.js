@@ -354,7 +354,7 @@ function tgKeyboard(){
   ]};
 }
 async function tgStart(chatId){
-  return tg('sendMessage',{chat_id:chatId,text:'👋 Добро пожаловать в EKOOOL!\\n\\nВыберите действие:',reply_markup:tgKeyboard()});
+  return tg('sendMessage',{chat_id:chatId,text:'👋 Добро пожаловать в EKOOOL!\n\nВыберите действие:',reply_markup:tgKeyboard()});
 }
 async function tgStatus(chatId){
   const started=Date.now();
@@ -362,9 +362,9 @@ async function tgStatus(chatId){
     const r=await fetch('https://ekool-server.onrender.com/api/health',{signal:AbortSignal.timeout(5000)});
     const ms=Date.now()-started;
     const x=await r.json().catch(()=>({}));
-    if(r.ok&&x.ok)return tg('sendMessage',{chat_id:chatId,text:'🟢 EKOOOL работает\\n\\nСервер: ONLINE\\nБаза: '+(x.storage||'—')+'\\nПользователей: '+(x.users??'—')+'\\nОтвет: '+ms+' мс',reply_markup:tgKeyboard()});
+    if(r.ok&&x.ok)return tg('sendMessage',{chat_id:chatId,text:'🟢 EKOOOL работает\n\nСервер: ONLINE\nБаза: '+(x.storage||'—')+'\nПользователей: '+(x.users??'—')+'\nОтвет: '+ms+' мс',reply_markup:tgKeyboard()});
   }catch(e){}
-  return tg('sendMessage',{chat_id:chatId,text:'🔴 EKOOOL сейчас недоступен или сервер запускается.\\n\\nПроверьте через несколько секунд.',reply_markup:tgKeyboard()});
+  return tg('sendMessage',{chat_id:chatId,text:'🔴 EKOOOL сейчас недоступен или сервер запускается.\n\nПроверьте через несколько секунд.',reply_markup:tgKeyboard()});
 }
 app.post('/api/telegram/webhook',async(req,res)=>{
   if(TELEGRAM_WEBHOOK_SECRET && req.get('x-telegram-bot-api-secret-token')!==TELEGRAM_WEBHOOK_SECRET)return res.sendStatus(401);
