@@ -405,7 +405,8 @@ async function chat(oid){clean();delete cache[oid];await loadGifts();let o=await
  const renderMessages=async()=>{
    const el=$('#ms');if(!el)return;
    const ss=await db.collection('msgs').where('chat','==',k).get();
-   const ms=ss.docs.map(d=>({...d.data(),id:d.id})).sort((a,b)=>a.ts-b.ts);\n   const unread=ms.filter(m=>m.b===me.id&&!m.readAt);if(unread.length){const rt=Date.now();await Promise.all(unread.map(m=>db.doc('msgs/'+m.id).update({readAt:rt}).catch(()=>{})));unread.forEach(m=>m.readAt=rt)}
+   const ms=ss.docs.map(d=>({...d.data(),id:d.id})).sort((a,b)=>a.ts-b.ts);
+   const unread=ms.filter(m=>m.b===me.id&&!m.readAt);if(unread.length){const rt=Date.now();await Promise.all(unread.map(m=>db.doc('msgs/'+m.id).update({readAt:rt}).catch(()=>{})));unread.forEach(m=>m.readAt=rt)}
    const stranger=!o.bot&&ms.some(m=>m.a===oid)&&!ms.some(m=>m.a===me.id);
    const si=$('#strangerInfo');
    if(si){
