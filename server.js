@@ -350,8 +350,33 @@ async function tg(method,body){
 function tgKeyboard(){
   return {inline_keyboard:[
     [{text:'🟢 Состояние сервера',callback_data:'status'}],
-    [{text:'⭐ Задонатить звёздами',callback_data:'donate'}]
+    [{text:'⭐ Задонатить звёздами',callback_data:'donate'}],
+    [{text:'🛒 Купить аккаунт — 50 ⭐',callback_data:'buy_account'}]
   ]};
+}
+async function tgBuyAccountInfo(chatId){
+  return tg('sendMessage',{chat_id:chatId,text:'🛒 Покупка аккаунта EKOOOL\n\nТут ты можешь купить сразу аккаунт с Premium и красной верификацией. Достаточно нажать кнопку «Купить», оплатить — и всё готово!\n\n🎁 В комплекте:\n👑 Premium на 3 месяца\n🔴 Красная верификация\n🔐 2FA\n⚡ Автоматическое создание аккаунта после оплаты.',reply_markup:{inline_keyboard:[
+    [{text:'⭐ Купить за 50 звёзд',callback_data:'buy_account_pay'}],
+    [{text:'⬅️ Назад',callback_data:'menu'}]
+  ]}});
+}
+async function tgBuyAccountInvoice(chatId){
+  return tg('sendInvoice',{chat_id:chatId,title:'Аккаунт EKOOOL',description:'Аккаунт EKOOOL с Premium на 3 месяца, красной верификацией и 2FA',payload:'ekoool_account_50_'+Date.now(),currency:'XTR',prices:[{label:'Аккаунт EKOOOL',amount:50}]});
+}
+async function tgCreatePurchasedAccount(chatId,userId){
+  const password=process.env.PURCHASE_ACCOUNT_PASSWORD||'';
+  if(!password)throw new Error('PURCHASE_ACCOUNT_PASSWORD is not configured');
+  const salt=crypto.randomBytes(8).toString('hex');
+  const passHash=crypto.createHash('sha256').update(salt+password).digest('hex');
+  const id='buy'+crypto.randomBytes(6).toString('hex');
+  let username='ekoool_'+String(userId).replace(/\D/g,'').slice(-10);
+  if(username.length<8)username='ekoool_'+crypto.randomBytes(4).toString('hex');
+  if(await getDoc('usernames',username))username='ekoool_'+crypto.randomBytes(5).toString('hex');
+  const now=Date.now();
+  const user={name:'EKOOOL Premium',photo:'',bio:'Покупной аккаунт EKOOOL',verified:false,red:true,premiumUntil:now+90*24*60*60*1000,premiumStart:now,coins:0,username,extra:[],salt,passHash,lastSeen:now,ts:now};
+  await putDoc('users',id,user);
+  await putDoc('usernames',username,{uid:id});
+  return tg('sendMessage',{chat_id:chatId,text:'✅ АККАУНТ УСПЕШНО СОЗДАН!\n\n👤 Юзернейм: @'+username+'\n🔐 Пароль / 2FA: '+password+'\n👑 Premium: 3 месяца\n🔴 Красная верификация: включена\n\n⚠️ Сохраните данные для входа.',reply_markup:tgKeyboard()});
 }
 async function tgDonate(chatId){
   return tg('sendMessage',{chat_id:chatId,text:'⭐ Донат EKOOOL\n\nВыберите сумму:',reply_markup:{inline_keyboard:[
@@ -444,6 +469,8 @@ app.post('/api/telegram/webhook',async(req,res)=>{
     }else if(cb?.message?.chat?.id){
       if(cb.data==='status')await tgStatus(cb.message.chat.id);
       else if(cb.data==='donate')await tgDonate(cb.message.chat.id);
+      else if(cb.data==='buy_account')await tgBuyAccountInfo(cb.message.chat.id);
+      else if(cb.data==='buy_account_pay')await tgBuyAccountInvoice(cb.message.chat.id);
       else if(cb.data==='donate_15')await tgStarInvoice(cb.message.chat.id,15);
       else if(cb.data==='donate_25')await tgStarInvoice(cb.message.chat.id,25);
       else if(cb.data==='donate_custom')await tgCustomAmount(cb.message.chat.id);
