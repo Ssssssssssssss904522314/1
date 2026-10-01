@@ -3,7 +3,6 @@ const fs=require('fs');
 const path=require('path');
 const crypto=require('crypto');
 const {Pool}=require('pg');
-const nodemailer=require('nodemailer');
 
 const app=express();
 const PORT=process.env.PORT||10000;
@@ -164,7 +163,6 @@ async function canWriteDoc(req,c,id,body){
   const u=await userAuth(req);
   if(!u){
     if(c==='users'){
-      // Registration is handled only by /api/auth/register/complete after email verification.
       return false;
     }
     if(c==='usernames'&&body?.uid){
@@ -213,79 +211,38 @@ app.use((req,res,next)=>{
   next();
 });
 
-function normalizeEmail(v){return String(v||'').trim().toLowerCase()}
-function validEmail(v){return /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/i.test(v)}
-function emailCodeHash(ticket,code){return crypto.createHash('sha256').update(String(ticket)+':'+String(code)).digest('hex')}
-function emailRateAllowed(key){
-  const now=Date.now(),a=emailRate.get(key)||{n:0,at:now};
-  if(now-a.at>60*60*1000){a.n=0;a.at=now}
-  if(a.n>=5)return false;
-  a.n++;emailRate.set(key,a);return true;
-}
-async function sendVerificationEmail(email,code){
-  if(!smtpConfigured)throw new Error('SMTP-почта не настроена на сервере');
-  const transporter=nodemailer.createTransport({host:SMTP_HOST,port:SMTP_PORT,secure:SMTP_PORT===465,auth:{user:SMTP_USER,pass:SMTP_PASS}});
-  await transporter.sendMail({from:SMTP_FROM,to:email,subject:'Код подтверждения регистрации EKOOOL',text:'Ваш код подтверждения регистрации EKOOOL: '+code+'\n\nКод действует 10 минут. Если вы не регистрируетесь в EKOOOL, просто проигнорируйте это письмо.',html:'<div style="font-family:Arial,sans-serif;max-width:520px;margin:0 auto;padding:24px;color:#131826"><h2>EKOOOL</h2><p>Ваш код подтверждения регистрации:</p><div style="font-size:34px;font-weight:800;letter-spacing:8px;margin:20px 0">'+code+'</div><p>Код действует 10 минут. Если вы не регистрируетесь в EKOOOL, просто проигнорируйте это письмо.</p></div>'});
-}
-app.get('/api/auth/email-status',async(req,res)=>{
-  res.json({configured:smtpConfigured,host:SMTP_HOST,port:SMTP_PORT,userConfigured:!!SMTP_USER,fromConfigured:!!SMTP_FROM});
-});
-
-app.post('/api/auth/register/start',async(req,res)=>{
-  try{
-    const email=normalizeEmail(req.body?.email);
-    if(!validEmail(email))return res.status(400).json({error:'Введите корректную почту',code:'invalid_email'});
-    if(!smtpConfigured)return res.status(503).json({error:'SMTP-почта не настроена на сервере',code:'email_not_configured'});
-    const key=email+'|'+String(req.ip||'');
-    if(!emailRateAllowed(key))return res.status(429).json({error:'Слишком много запросов кода. Попробуйте позже.',code:'rate_limited'});
-    const ticket=crypto.randomBytes(24).toString('hex');
-    const code=String(crypto.randomInt(100000,1000000));
-    await putDoc('email_verifications',ticket,{email,codeHash:emailCodeHash(ticket,code),expires:Date.now()+EMAIL_CODE_TTL,attempts:0,createdAt:Date.now()});
-    try{
-      await sendVerificationEmail(email,code);
-    }catch(e){
-      await deleteDoc('email_verifications',ticket);
-      throw e;
-    }
-    res.json({ok:true,ticket,expiresIn:EMAIL_CODE_TTL});
-  }catch(e){
-    res.status(500).json({error:e.message||'Не удалось отправить код',code:'email_send_failed'});
-  }
-});
 app.post('/api/auth/register/complete',async(req,res)=>{
   try{
-    const ticket=String(req.body?.ticket||'').trim();
-    const code=String(req.body?.code||'').trim();
-    const email=normalizeEmail(req.body?.email);
     const name=String(req.body?.name||'').trim();
     const username=String(req.body?.username||'').trim().toLowerCase().replace(/^@/,'');
     const password=String(req.body?.password||'');
-    if(!ticket||!code||!validEmail(email)||!name||!/^[a-z][a-z0-9_]{3,19}$/.test(username)||password.length<6)return res.status(400).json({error:'Проверьте данные регистрации',code:'invalid_registration'});
-    const v=await getDoc('email_verifications',ticket);
-    if(!v||v.email!==email)return res.status(400).json({error:'Код подтверждения не найден или устарел',code:'verification_expired'});
-    if(v.expires<Date.now()) {await deleteDoc('email_verifications',ticket);return res.status(400).json({error:'Срок действия кода истёк. Запросите новый код.',code:'verification_expired'})}
-    if(Number(v.attempts||0)>=EMAIL_CODE_MAX_ATTEMPTS)return res.status(429).json({error:'Слишком много попыток. Запросите новый код.',code:'too_many_attempts'});
-    if(!crypto.timingSafeEqual(Buffer.from(emailCodeHash(ticket,code)),Buffer.from(String(v.codeHash)))){
-      const attempts=Number(v.attempts||0)+1;
-      await patchDoc('email_verifications',ticket,{attempts});
-      return res.status(400).json({error:'Неправильный код',code:'invalid_code'});
-    }
-    const users=await getCollection('users');
-    if(users.some(x=>normalizeEmail(x.data?.email)===email))return res.status(409).json({error:'Эта почта уже используется',code:'email_used'});
+    if(!name||!/^[a-z][a-z0-9_]{3,19}$/.test(username)||password.length<6)return res.status(400).json({error:'Проверьте имя, юзернейм и пароль',code:'invalid_registration'});
     if(await getDoc('usernames',username))return res.status(409).json({error:'Юзернейм занят',code:'username_taken'});
     const id='EK-'+Array.from({length:8},()=>'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'[crypto.randomInt(0,32)]).join('');
     const salt=crypto.randomBytes(8).toString('hex');
     const passHash=crypto.createHash('sha256').update(salt+password).digest('hex');
     const now=Date.now();
-    const user={name,photo:'',bio:'',verified:false,purchased:false,coins:1000,email,username,extra:[],salt,passHash,lastSeen:now,ts:now};
+    const user={name,photo:'',bio:'',verified:false,purchased:false,coins:1000,username,extra:[],salt,passHash,lastSeen:now,ts:now};
     await putDoc('users',id,user);
     await putDoc('usernames',username,{uid:id});
     try{await putDoc('gm','G-JEKD6P_'+id,{gid:'G-JEKD6P',uid:id,ts:now})}catch(e){}
     try{await putDoc('msgs','m'+now+crypto.randomBytes(3).toString('hex'),{chat:[id,'botregistor'].sort().join('_'),a:'botregistor',b:id,ts:now,type:'text',text:'✅ Регистрация прошла успешно!\\nВаш аккаунт @'+username+' создан. Добро пожаловать в EKOOOL!',bot:true})}catch(e){}
-    await deleteDoc('email_verifications',ticket);
     setSessionCookie(res,await createSession(id));
     res.json({ok:true,id});
   }catch(e){res.status(500).json({error:e.message||'Не удалось зарегистрировать аккаунт',code:'registration_failed'})}
+});
+
+app.post('/api/telegram/link/claim',async(req,res)=>{
+  try{
+    const u=await userAuth(req);
+    if(!u)return res.status(401).json({error:'Unauthorized'});
+    const token=String(req.body?.token||'').trim();
+    const data=await getDoc('telegram_link_tokens',token);
+    if(!token||!data||data.expires<Date.now()||String(data.uid)!==String(u.id))return res.status(400).json({error:'Ссылка недействительна или устарела'});
+    await patchDoc('users',String(u.id),{telegramChatId:String(data.chatId),telegramLinkedAt:Date.now()});
+    await deleteDoc('telegram_link_tokens',token);
+    res.json({ok:true});
+  }catch(e){res.status(500).json({error:e.message})}
 });
 
 app.post('/api/auth/session',async(req,res)=>{
