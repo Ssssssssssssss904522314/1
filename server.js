@@ -9,6 +9,10 @@ const PORT=process.env.PORT||10000;
 const ADMIN_PASSWORD=process.env.ADMIN_PASSWORD||'';
 const GROQ_API_KEY=process.env.GROQ_API_KEY||'';
 const GROQ_MODEL=process.env.GROQ_MODEL||'openai/gpt-oss-20b';
+const TELEGRAM_BOT_TOKEN=process.env.TELEGRAM_BOT_TOKEN||'';
+const TELEGRAM_WEBHOOK_SECRET=process.env.TELEGRAM_WEBHOOK_SECRET||'';
+const TELEGRAM_WEBHOOK_URL=process.env.TELEGRAM_WEBHOOK_URL||'https://ekool-server.onrender.com/api/telegram/webhook';
+const DONATE_URL=process.env.DONATE_URL||'https://ekool-site.onrender.com/';
 
 const DATA_DIR=path.join(__dirname,'data');
 const DATA_FILE=path.join(DATA_DIR,'db.json');
@@ -333,6 +337,61 @@ app.post('/api/bots/respond',async(req,res)=>{
   }catch(e){res.status(500).json({error:e.message})}
 });
 
+
+async function tg(method,body){
+  if(!TELEGRAM_BOT_TOKEN)throw new Error('TELEGRAM_BOT_TOKEN не настроен');
+  const r=await fetch('https://api.telegram.org/bot'+TELEGRAM_BOT_TOKEN+'/'+method,{
+    method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body||{})
+  });
+  const x=await r.json().catch(()=>({}));
+  if(!r.ok||!x.ok)throw new Error(x?.description||'Telegram API error');
+  return x.result;
+}
+function tgKeyboard(){
+  return {inline_keyboard:[
+    [{text:'🟢 Состояние сервера',callback_data:'status'}],
+    [{text:'💰 Задонатить',url:DONATE_URL}]
+  ]};
+}
+async function tgStart(chatId){
+  return tg('sendMessage',{chat_id:chatId,text:'👋 Добро пожаловать в EKOOOL!\\n\\nВыберите действие:',reply_markup:tgKeyboard()});
+}
+async function tgStatus(chatId){
+  const started=Date.now();
+  try{
+    const r=await fetch('https://ekool-server.onrender.com/api/health',{signal:AbortSignal.timeout(5000)});
+    const ms=Date.now()-started;
+    const x=await r.json().catch(()=>({}));
+    if(r.ok&&x.ok)return tg('sendMessage',{chat_id:chatId,text:'🟢 EKOOOL работает\\n\\nСервер: ONLINE\\nБаза: '+(x.storage||'—')+'\\nПользователей: '+(x.users??'—')+'\\nОтвет: '+ms+' мс',reply_markup:tgKeyboard()});
+  }catch(e){}
+  return tg('sendMessage',{chat_id:chatId,text:'🔴 EKOOOL сейчас недоступен или сервер запускается.\\n\\nПроверьте через несколько секунд.',reply_markup:tgKeyboard()});
+}
+app.post('/api/telegram/webhook',async(req,res)=>{
+  if(TELEGRAM_WEBHOOK_SECRET && req.get('x-telegram-bot-api-secret-token')!==TELEGRAM_WEBHOOK_SECRET)return res.sendStatus(401);
+  res.sendStatus(200);
+  try{
+    const u=req.body||{};
+    const msg=u.message;
+    const cb=u.callback_query;
+    if(msg?.chat?.id){
+      const text=String(msg.text||'').trim().toLowerCase();
+      if(text==='/start'||text==='старт')await tgStart(msg.chat.id);
+      else if(text==='состояние'||text.includes('состояние сервера'))await tgStatus(msg.chat.id);
+      else await tg('sendMessage',{chat_id:msg.chat.id,text:'Выберите действие:',reply_markup:tgKeyboard()});
+    }else if(cb?.message?.chat?.id){
+      if(cb.data==='status')await tgStatus(cb.message.chat.id);
+      await tg('answerCallbackQuery',{callback_query_id:cb.id});
+    }
+  }catch(e){console.error('Telegram bot error:',e.message)}
+});
+async function setupTelegram(){
+  if(!TELEGRAM_BOT_TOKEN)return;
+  try{
+    await tg('setWebhook',{url:TELEGRAM_WEBHOOK_URL,secret_token:TELEGRAM_WEBHOOK_SECRET||undefined,drop_pending_updates:false});
+    console.log('EKOOOL Telegram bot webhook configured');
+  }catch(e){console.error('Telegram webhook setup failed:',e.message)}
+}
+
 app.get('/api/health',async(req,res)=>{
   try{
     const users=(await getCollection('users')).length;
@@ -344,7 +403,7 @@ app.use(express.static(__dirname,{index:'index.html'}));
 app.get('*',(req,res)=>res.sendFile(path.join(__dirname,'index.html')));
 
 initDb().then(()=>{
-  app.listen(PORT,'0.0.0.0',()=>console.log('EKOOOL server listening on '+PORT+' | storage: '+(usePg?'PostgreSQL':'JSON')));
+  app.listen(PORT,'0.0.0.0',async()=>{console.log('EKOOOL server listening on '+PORT+' | storage: '+(usePg?'PostgreSQL':'JSON'));await setupTelegram();});
 }).catch(e=>{
   console.error('EKOOOL database init failed:',e);
   process.exit(1);
