@@ -65,10 +65,13 @@ async function initDb(){
     try{
       await client.query('BEGIN');
       for(const [collection,docs] of Object.entries(fileDb)){
+        if(collection==='email_verifications')continue;
         for(const [id,data] of Object.entries(docs||{})){
+          const clean={...(data||{})};
+          if(collection==='users')delete clean.email;
           await client.query(
             'INSERT INTO ekoool_kv(collection,id,data) VALUES($1,$2,$3) ON CONFLICT DO NOTHING',
-            [collection,id,JSON.stringify(data)]
+            [collection,id,JSON.stringify(clean)]
           );
         }
       }
