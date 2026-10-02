@@ -301,9 +301,10 @@ async function init(){db=apiDb();isAdmin=false;
    const s=await db.doc('users/'+id).get();
    if(s.exists){
     me={id,...s.data()};
-    await sessionLogin(me.id,me.passHash);
-    const b=bad(me);return b?blocked(b):start();
+    const ok=await sessionLogin(me.id,me.passHash);
+    if(ok){const b=bad(me);return b?blocked(b):start();}
    }
+   me=null;
   }
  }catch(e){}
  auth()}
@@ -315,6 +316,7 @@ function auth(mode='in',add){
  app.innerHTML=`<div class="body c" style="padding-top:${add?'4vh':'12vh'}">${add?'<div style="text-align:left"><button class="ib" id="bk">← Назад</button></div>':''}<h1 style="font-size:34px;margin:0;color:var(--pr)">EKOOOL</h1><p style="color:var(--mut)">${add?'Добавить аккаунт':'Мессенджер'}</p>
  ${reg?'<input class="t" id="nm" placeholder="Ваше имя"><input class="t" id="un" placeholder="Юзернейм (английские буквы)">':'<input class="t" id="id" placeholder="Юзернейм или номер (+888…)">'}
  <input class="t" id="pw" type="password" placeholder="Пароль (от 6 символов)">
+ <input class="t" id="tfa" type="password" inputmode="text" autocomplete="one-time-code" placeholder="2FA-код из Telegram-бота" style="display:none">
  <div class="err" id="er"></div>
  <button class="pr" style="width:100%" id="go">${reg?'Создать аккаунт':'Войти'}</button><p><a href="#" id="sw" style="color:var(--pr)">${reg?'Уже есть аккаунт? Войти':'Нет аккаунта? Регистрация'}</a></p>
  ${isAdmin?'<p><a href="#" id="adl" style="color:var(--mut)">Админ-панель</a></p>':''}<div class="note">${reg?'Регистрация без электронной почты. Нужны только имя, юзернейм и пароль.':'Юзернейм — ваш публичный адрес. Для входа нужны юзернейм и пароль.'}</div></div>`;
@@ -325,14 +327,31 @@ function auth(mode='in',add){
    if(pw.length<6)return er.textContent='Пароль: минимум 6 символов';
    if(!reg){
      try{
-       const f=await findUser($('#id').value,true);if(!f)return er.textContent='Неверный юзернейм или пароль';
-       if(!f.passHash){const salt=genSalt(),ph=await hp(pw,salt);await db.doc('users/'+f.id).update({salt,passHash:ph});f.salt=salt;f.passHash=ph}
-       else if(f.passHash!==await hp(pw,f.salt)){await botMsg(f.id,'⚠️ Попытка входа в ваш аккаунт с неверным паролем.\\nВремя: '+new Date().toLocaleString());return er.textContent='Неверный юзернейм или пароль'}
-       me=f;const bb=bad(me);if(bb)return blocked(bb);
+       const login=$('#id').value.trim(),twoFA=$('#tfa').value.trim();
+       const rr=await fetch('/api/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},credentials:'include',body:JSON.stringify({username:login,password:pw,twoFA})});
+       const xx=await rr.json().catch(()=>({}));
+       if(!rr.ok){
+         if(xx.code==='twofa_required'||xx.requires2FA){
+           $('#tfa').style.display='block';
+           $('#tfa').focus();
+           $('#go').textContent='Подтвердить 2FA';
+           er.textContent='🔐 Этот покупной аккаунт требует 2FA-код из Telegram-бота.';
+           return;
+         }
+         if(xx.code==='invalid_2fa'){
+           $('#tfa').style.display='block';
+           $('#go').textContent='Подтвердить 2FA';
+           return er.textContent='❌ Неверный 2FA-код.';
+         }
+         return er.textContent=xx.error||'Неверный юзернейм или пароль';
+       }
+       const s=await db.doc('users/'+xx.id).get();
+       if(!s.exists)return er.textContent='Не удалось загрузить аккаунт';
+       me={id:xx.id,...s.data()};
+       const bb=bad(me);if(bb)return blocked(bb);
        try{localStorage.ekid=me.id;localStorage.ekproof=JSON.stringify({id:me.id,passHash:me.passHash})}catch(e){}
-       sessionLogin(me.id,me.passHash).catch(()=>{});
        if(add&&prev&&prev.id!==me.id)await botMsg(prev.id,'➕ На этом устройстве добавлен аккаунт @'+(me.username||me.id)+'.');
-       await botLoginEvent(me.id,'login');
+       try{await botLoginEvent(me.id,'login')}catch(e){}
        return start();
      }catch(e){return er.textContent='Ошибка: '+(e.message||e.code)}
    }
