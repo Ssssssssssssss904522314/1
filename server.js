@@ -227,17 +227,18 @@ function uniqueGiftPublic(g){
 app.post('/api/unique-gifts/create',async(req,res)=>{
   try{
     const u=await userAuth(req);if(!u)return res.status(401).json({error:'Unauthorized'});
-    const recipientId=String(req.body?.recipientId||'').trim(),recipient=await getDoc('users',recipientId);
-    if(!recipient)return res.status(404).json({error:'Получатель не найден'});
+    const recipientId=String(req.body?.recipientId||'').trim();
+    if(!recipientId)return res.status(400).json({error:'Получатель не указан'});
     if(recipientId===u.id)return res.status(400).json({error:'Нельзя подарить уникальный подарок себе'});
-    if(recipient.bot||recipient.aiBot||recipient.type==='bot')return res.status(400).json({error:'Ботам уникальные подарки не отправляются'});
+    const recipient=await getDoc('users',recipientId);
+    if(recipient&&(recipient.bot||recipient.aiBot||recipient.type==='bot'))return res.status(400).json({error:'Ботам уникальные подарки не отправляются'});
     const price=Math.floor(Number(req.body?.price)||0);
     if(price<1||price>1000000000)return res.status(400).json({error:'Стоимость должна быть от 1 до 1 000 000 000 ЭКОкоинов'});
     const c=Number(u.coins||0);if(c<price)return res.status(400).json({error:'Недостаточно ЭКОкоинов'});
     const g=uniqueGiftClean(req.body),id=uniqueGiftId(),now=Date.now();
     const gift={...g,id,ownerId:recipientId,creatorId:u.id,price,createdAt:now,displayInName:req.body?.displayInName===true,profileVisible:req.body?.profileVisible!==false,worn:false};
     await putDoc('ugifts',id,gift);await patchDoc('users',u.id,{coins:c-price});
-    await putDoc('txs','ug_'+id,{uid:u.id,ts:now,amt:-price,note:'Уникальный подарок → @'+String(recipient.username||recipientId)});
+    await putDoc('txs','ug_'+id,{uid:u.id,ts:now,amt:-price,note:'Уникальный подарок → @'+String(recipient?.username||recipientId)});
     const mid='m'+now+crypto.randomBytes(3).toString('hex');
     await putDoc('msgs',mid,{chat:[u.id,recipientId].sort().join('_'),a:u.id,b:recipientId,ts:now,type:'unique_gift',giftId:id,gift:uniqueGiftPublic(gift),text:g.message,status:'sent',sentAt:now});
     res.json({ok:true,gift:uniqueGiftPublic(gift),messageId:mid,coins:c-price});
