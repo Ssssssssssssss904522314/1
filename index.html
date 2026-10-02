@@ -515,18 +515,18 @@ async function acceptCall(data){
   const a=activeCall={id:data.id,other:data.a,kind:data.kind,pc:null,localStream:stream,remoteStream:null,incoming:true,seenCandidates:new Set(),pendingCandidates:[]};
   callOverlay({name:o.name||o.username||'Пользователь',kind:data.kind});if(data.kind==='video'){const v=document.getElementById('ekoLocalVideo');if(v){v.srcObject=stream;v.play?.().catch(()=>{})}}
   const pc=a.pc=new RTCPeerConnection(CALL_ICE);wirePeer(a);stream.getTracks().forEach(t=>pc.addTrack(t,stream));
-  try{await pc.setRemoteDescription(new RTCSessionDescription(data.offer));watchCallCandidates(a);await flushCallCandidates(a);await pc.setLocalDescription(await pc.createAnswer());await db.doc(callDocId(data.id)).update({answer:rtcDescription(pc.localDescription),status:'accepted',acceptedAt:Date.now()});bindCallControls(a);setCallStatus('Соединение…')}
+  try{await pc.setRemoteDescription(new RTCSessionDescription(data.offer));watchCallCandidates(a);await flushCallCandidates(a);await pc.setLocalDescription(await pc.createAnswer());await db.doc(callDocId(data.id)).update({answer:rtcDescription(pc.localDescription),status:'accepted',acceptedAt:Date.now()});bindCallControls(a);setCallStatus('Соединение…');const poll=async()=>{if(!activeCall||activeCall.id!==data.id)return;try{const s=await db.doc(callDocId(data.id)).get(),d=s.data();if(d?.status==='ended'||d?.status==='rejected'||d?.status==='failed'){setCallStatus('Вызов завершён');setTimeout(()=>finishCall(null),500);return}}catch(e){}if(activeCall&&activeCall.id===data.id)a.callTimer=setTimeout(poll,800)};a.unsubCall=()=>clearTimeout(a.callTimer);poll()}
   catch(e){alert('Не удалось принять звонок: '+(e.message||e));await finishCall('failed')}
 }
 async function rejectCall(id){try{await db.doc(callDocId(id)).update({status:'rejected',endedAt:Date.now()})}catch(e){}const ov=document.getElementById('ekoCallOverlay');if(ov)ov.remove()}
 function showIncomingCall(data){
   if(!data||data.status!=='ringing'||!data.offer||activeCall||document.getElementById('ekoCallOverlay'))return;if(Date.now()-Number(data.createdAt||0)>65000)return;
   const o=cache[data.a]||{name:'Входящий вызов'},ov=callOverlay({name:o.name||o.username||'Пользователь',kind:data.kind,incoming:true}),wait={id:data.id,a:data.a,b:data.b,kind:data.kind,offer:data.offer};
-  const ac=document.getElementById('ekoAccept'),rj=document.getElementById('ekoReject');if(ac)ac.onclick=()=>acceptCall(wait);if(rj)rj.onclick=()=>rejectCall(wait.id);
+  const ac=document.getElementById('ekoAccept'),rj=document.getElementById('ekoReject');if(ac)ac.onclick=()=>acceptCall(wait);if(rj)rj.onclick=()=>rejectCall(wait.id);setTimeout(()=>{const x=document.getElementById('ekoCallOverlay');if(x&&x.dataset.callId===data.id&&!activeCall){x.remove();db.doc(callDocId(data.id)).update({status:'missed',endedAt:Date.now()}).catch(()=>{})}},60000);
 }
 function initCallInbox(){
   if(callGlobalUnsub){try{callGlobalUnsub()}catch(e){}callGlobalUnsub=null}if(!me||!db)return;
-  callGlobalUnsub=db.collection('calls').where('b','==',me.id).onSnapshot(async s=>{for(const d of(s.docs||[])){const x={id:d.id,...d.data()};if(x.status==='ringing'&&x.offer)showIncomingCall(x)}});
+  callGlobalUnsub=db.collection('calls').where('b','==',me.id).onSnapshot(async s=>{for(const d of(s.docs||[])){const x={id:d.id,...d.data()};const ov=document.getElementById('ekoCallOverlay');if(ov&&ov.dataset.callId===x.id&&x.status!=='ringing'&&!activeCall)ov.remove();if(x.status==='ringing'&&x.offer)showIncomingCall(x)}});
 }
 function addCallButtons(oid){const a=document.getElementById('callAudio'),v=document.getElementById('callVideo');if(a)a.onclick=()=>startCall(oid,'audio');if(v)v.onclick=()=>startCall(oid,'video')}
 
