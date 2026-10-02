@@ -453,36 +453,92 @@ async function secretModal(oid,onDone){
  d.querySelector('#closek').onclick=()=>d.remove();
 }
 
+
+/* ---- EKOOOL WebRTC calls ---- */
+let activeCall=null,callGlobalUnsub=null;
+const CALL_ICE={iceServers:[{urls:'stun:stun.l.google.com:19302'}]};
+function callId(){return 'call_'+Date.now().toString(36)+'_'+Math.random().toString(36).slice(2,9)}
+function callDocId(id){return 'calls/'+id}
+function callCandidateId(id){return 'cc_'+id+'_'+me.id+'_'+Date.now().toString(36)+'_'+Math.random().toString(36).slice(2,7)}
+function rtcDescription(x){return x?{type:x.type,sdp:x.sdp}:null}
+function rtcCandidate(x){return x?{candidate:x.candidate,sdpMid:x.sdpMid,sdpMLineIndex:x.sdpMLineIndex,usernameFragment:x.usernameFragment||null}:null}
+function callOverlay(c){
+  const old=document.getElementById('ekoCallOverlay');if(old)old.remove();
+  const video=c.kind==='video',name=esc(c.name||'Пользователь'),d=document.createElement('div');d.id='ekoCallOverlay';
+  d.innerHTML=\`<div style="position:fixed;inset:0;z-index:500;background:radial-gradient(circle at 50% 20%,rgba(91,108,255,.25),rgba(5,7,15,.97) 65%);color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:18px">
+  <div style="position:absolute;top:18px;left:18px;right:18px;display:flex;align-items:center;justify-content:space-between"><div><b style="font-size:18px">${name}</b><div id="ekoCallStatus" style="font-size:13px;opacity:.7;margin-top:3px">${c.incoming?'Входящий вызов':c.statusText||'Вызов…'}</div></div><span style="font-size:26px">${video?'🎥':'📞'}</span></div>
+  <div style="width:min(96vw,760px);height:min(68vh,620px);position:relative;display:flex;align-items:center;justify-content:center;border-radius:28px;overflow:hidden;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);box-shadow:0 20px 80px rgba(0,0,0,.45)">
+  ${video?'<video id="ekoRemoteVideo" autoplay playsinline style="width:100%;height:100%;object-fit:cover;background:#05070d"></video><video id="ekoLocalVideo" autoplay muted playsinline style="position:absolute;right:14px;bottom:14px;width:min(28vw,190px);height:min(22vh,150px);object-fit:cover;border-radius:18px;border:2px solid rgba(255,255,255,.65);background:#10131d;box-shadow:0 10px 30px #0008"></video>':'<div style="width:120px;height:120px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:54px;background:linear-gradient(135deg,#5b7cff,#7b5cff)">📞</div><audio id="ekoRemoteAudio" autoplay></audio>'}</div>
+  <div style="display:flex;gap:12px;margin-top:18px;align-items:center">${c.incoming?'<button id="ekoAccept" style="border:0;border-radius:50%;width:58px;height:58px;background:#23c16b;color:#fff;font-size:25px;cursor:pointer">📞</button><button id="ekoReject" style="border:0;border-radius:50%;width:58px;height:58px;background:#e5484d;color:#fff;font-size:25px;cursor:pointer">✕</button>':'<button id="ekoMute" style="border:0;border-radius:50%;width:52px;height:52px;background:#ffffff18;color:#fff;font-size:22px;cursor:pointer">🎙️</button>'+(video?'<button id="ekoCam" style="border:0;border-radius:50%;width:52px;height:52px;background:#ffffff18;color:#fff;font-size:22px;cursor:pointer">📹</button>':'')+'<button id="ekoHang" style="border:0;border-radius:50%;width:60px;height:60px;background:#e5484d;color:#fff;font-size:25px;cursor:pointer">☎️</button>'}</div></div>\`;
+  document.body.appendChild(d);return d;
+}
+function setCallStatus(t){const e=document.getElementById('ekoCallStatus');if(e)e.textContent=t}
+async function deleteCallArtifacts(id){try{const s=await db.collection('callCandidates').where('callId','==',id).get();await Promise.all((s.docs||[]).map(x=>db.doc('callCandidates/'+x.id).delete().catch(()=>{})))}catch(e){}}
+async function finishCall(status){
+  const a=activeCall;if(!a)return;activeCall=null;try{a.pc?.close()}catch(e){}try{a.localStream?.getTracks().forEach(t=>t.stop())}catch(e){}try{a.remoteStream?.getTracks().forEach(t=>t.stop())}catch(e){}try{a.unsubCall?.()}catch(e){}try{a.unsubCandidates?.()}catch(e){}
+  const ov=document.getElementById('ekoCallOverlay');if(ov)ov.remove();
+  if(status&&a.id){try{await db.doc(callDocId(a.id)).update({status,endedAt:Date.now()})}catch(e){}}if(a.id)setTimeout(()=>deleteCallArtifacts(a.id),2500);
+}
+function closeCall(){return finishCall('ended')}
+function watchCallCandidates(a){
+  const q=db.collection('callCandidates').where('callId','==',a.id).where('to','==',me.id);
+  a.unsubCandidates=q.onSnapshot(async s=>{for(const d of(s.docs||[])){if(a.seenCandidates.has(d.id))continue;a.seenCandidates.add(d.id);const x=d.data();if(!x?.candidate)continue;if(a.pc.remoteDescription){try{await a.pc.addIceCandidate(new RTCIceCandidate(x.candidate))}catch(e){}}else a.pendingCandidates.push(x.candidate)}});
+}
+async function flushCallCandidates(a){for(const x of a.pendingCandidates.splice(0)){try{await a.pc.addIceCandidate(new RTCIceCandidate(x))}catch(e){}}}
+function wirePeer(a){
+  a.pc.onicecandidate=async e=>{if(!e.candidate)return;try{await db.doc('callCandidates/'+callCandidateId(a.id)).set({callId:a.id,a:me.id,b:a.other,from:me.id,to:a.other,candidate:rtcCandidate(e.candidate),ts:Date.now()})}catch(e){}};
+  a.pc.ontrack=e=>{const s=e.streams?.[0];if(!s)return;a.remoteStream=s;if(a.kind==='video'){const v=document.getElementById('ekoRemoteVideo');if(v){v.srcObject=s;v.play?.().catch(()=>{})}}else{const x=document.getElementById('ekoRemoteAudio');if(x){x.srcObject=s;x.play?.().catch(()=>{})}}};
+  a.pc.onconnectionstatechange=()=>{const s=a.pc.connectionState;if(s==='connected')setCallStatus('Соединение установлено');if(s==='failed'){setCallStatus('Не удалось соединиться');setTimeout(()=>finishCall('failed'),900)}};
+}
+function bindCallControls(a){
+  const m=document.getElementById('ekoMute'),v=document.getElementById('ekoCam'),h=document.getElementById('ekoHang');
+  if(m)m.onclick=()=>{const t=a.localStream?.getAudioTracks?.()[0];if(t){t.enabled=!t.enabled;m.textContent=t.enabled?'🎙️':'🔇'}};
+  if(v)v.onclick=()=>{const t=a.localStream?.getVideoTracks?.()[0];if(t){t.enabled=!t.enabled;v.textContent=t.enabled?'📹':'🚫'}};
+  if(h)h.onclick=closeCall;
+}
+async function getCallMedia(kind){if(!navigator.mediaDevices?.getUserMedia)throw new Error('Камера и микрофон доступны только по HTTPS.');return navigator.mediaDevices.getUserMedia(kind==='video'?{audio:true,video:{facingMode:'user',width:{ideal:1280},height:{ideal:720}}}:{audio:true,video:false})}
+async function startCall(oid,kind){
+  if(activeCall)return alert('У вас уже есть активный звонок.');const o=await getUser(oid);if(!o)return alert('Пользователь не найден.');let stream;
+  try{stream=await getCallMedia(kind)}catch(e){return alert('Не удалось включить '+(kind==='video'?'камеру и микрофон':'микрофон')+'. Разрешите доступ в браузере и попробуйте ещё раз.')}
+  const id=callId(),a=activeCall={id,other:oid,kind,pc:null,localStream:stream,remoteStream:null,incoming:false,seenCandidates:new Set(),pendingCandidates:[]};
+  callOverlay({name:o.name||o.username||'Пользователь',kind,statusText:'Вызов…'});if(kind==='video'){const v=document.getElementById('ekoLocalVideo');if(v){v.srcObject=stream;v.play?.().catch(()=>{})}}
+  const pc=a.pc=new RTCPeerConnection(CALL_ICE);wirePeer(a);stream.getTracks().forEach(t=>pc.addTrack(t,stream));
+  try{
+    await db.doc(callDocId(id)).set({a:me.id,b:oid,kind,status:'ringing',createdAt:Date.now(),offer:null,answer:null});watchCallCandidates(a);
+    const poll=async()=>{if(!activeCall||activeCall.id!==id)return;try{const s=await db.doc(callDocId(id)).get(),d=s.data();if(d?.status==='rejected'||d?.status==='ended'||d?.status==='failed'){setCallStatus(d.status==='rejected'?'Вызов отклонён':'Вызов завершён');setTimeout(()=>finishCall(null),700);return}if(d?.answer&&!pc.remoteDescription){await pc.setRemoteDescription(new RTCSessionDescription(d.answer));await flushCallCandidates(a)}}catch(e){}if(activeCall&&activeCall.id===id)a.callTimer=setTimeout(poll,800)};
+    a.unsubCall=()=>clearTimeout(a.callTimer);await pc.setLocalDescription(await pc.createOffer());await db.doc(callDocId(id)).update({offer:rtcDescription(pc.localDescription)});bindCallControls(a);setCallStatus('Вызов отправлен…');poll();
+  }catch(e){alert('Не удалось начать звонок: '+(e.message||e));await finishCall('failed')}
+}
+async function acceptCall(data){
+  if(activeCall)return;const o=await getUser(data.a)||{name:'Пользователь'};let stream;
+  try{stream=await getCallMedia(data.kind)}catch(e){try{await db.doc(callDocId(data.id)).update({status:'ended',endedAt:Date.now()})}catch(_){};return alert('Нужен доступ к '+(data.kind==='video'?'камере и микрофону':'микрофону')+'. Разрешите его в браузере.')}
+  const a=activeCall={id:data.id,other:data.a,kind:data.kind,pc:null,localStream:stream,remoteStream:null,incoming:true,seenCandidates:new Set(),pendingCandidates:[]};
+  callOverlay({name:o.name||o.username||'Пользователь',kind:data.kind});if(data.kind==='video'){const v=document.getElementById('ekoLocalVideo');if(v){v.srcObject=stream;v.play?.().catch(()=>{})}}
+  const pc=a.pc=new RTCPeerConnection(CALL_ICE);wirePeer(a);stream.getTracks().forEach(t=>pc.addTrack(t,stream));
+  try{await pc.setRemoteDescription(new RTCSessionDescription(data.offer));watchCallCandidates(a);await flushCallCandidates(a);await pc.setLocalDescription(await pc.createAnswer());await db.doc(callDocId(data.id)).update({answer:rtcDescription(pc.localDescription),status:'accepted',acceptedAt:Date.now()});bindCallControls(a);setCallStatus('Соединение…')}
+  catch(e){alert('Не удалось принять звонок: '+(e.message||e));await finishCall('failed')}
+}
+async function rejectCall(id){try{await db.doc(callDocId(id)).update({status:'rejected',endedAt:Date.now()})}catch(e){}const ov=document.getElementById('ekoCallOverlay');if(ov)ov.remove()}
+function showIncomingCall(data){
+  if(!data||data.status!=='ringing'||!data.offer||activeCall||document.getElementById('ekoCallOverlay'))return;if(Date.now()-Number(data.createdAt||0)>65000)return;
+  const o=cache[data.a]||{name:'Входящий вызов'},ov=callOverlay({name:o.name||o.username||'Пользователь',kind:data.kind,incoming:true}),wait={id:data.id,a:data.a,b:data.b,kind:data.kind,offer:data.offer};
+  const ac=document.getElementById('ekoAccept'),rj=document.getElementById('ekoReject');if(ac)ac.onclick=()=>acceptCall(wait);if(rj)rj.onclick=()=>rejectCall(wait.id);
+}
+function initCallInbox(){
+  if(callGlobalUnsub){try{callGlobalUnsub()}catch(e){}callGlobalUnsub=null}if(!me||!db)return;
+  callGlobalUnsub=db.collection('calls').where('b','==',me.id).onSnapshot(async s=>{for(const d of(s.docs||[])){const x={id:d.id,...d.data()};if(x.status==='ringing'&&x.offer)showIncomingCall(x)}});
+}
+function addCallButtons(oid){const a=document.getElementById('callAudio'),v=document.getElementById('callVideo');if(a)a.onclick=()=>startCall(oid,'audio');if(v)v.onclick=()=>startCall(oid,'video')}
+
 function clean(){unsub.forEach(f=>f());unsub=[];app.style.removeProperty('--me')}
 function acctButton(){
  const u=me||{};
- return '<button class="ib" id="acctBtn" title="Аккаунты" style="padding:5px 7px;border-radius:14px;display:flex;align-items:center;gap:7px">'+ava(u,32)+'<span style="font-weight:700;max-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(u.name||u.username||'Аккаунт')+'</span><span style="font-size:11px;opacity:.65">⌄</span></button>';
-}
-async function accountSwitcher(){
- const ids=[me.id,...accs().filter(x=>x!==me.id)].slice(0,6);
- const users=await Promise.all(ids.map(async id=>{const u=await getUser(id);return u?{id,...u}:null}));
- const d=document.createElement('div');
- d.style.cssText='position:fixed;inset:0;background:#0008;display:flex;align-items:flex-start;justify-content:center;padding:64px 14px 14px;z-index:250';
- d.innerHTML='<div style="width:min(94vw,390px);max-height:78vh;overflow:auto;background:var(--card);color:var(--tx);border:1px solid var(--th);border-radius:22px;box-shadow:var(--sh);padding:12px">'+
-   '<div style="display:flex;align-items:center;justify-content:space-between;padding:7px 6px 12px"><b style="font-size:18px">Аккаунты EKOOOL</b><button class="ib" id="acClose">✕</button></div>'+
-   '<div style="display:grid;gap:6px">'+users.filter(Boolean).map(u=>'<button class="ib acRow" data-ac="'+esc(u.id)+'" style="display:flex;align-items:center;gap:11px;text-align:left;padding:11px 10px;border-radius:15px;background:'+(u.id===me.id?'var(--pr)':'var(--th)')+';color:'+(u.id===me.id?'#fff':'var(--tx)')+'">'+ava(u,42)+'<span style="min-width:0;flex:1"><b style="display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(u.name||u.username||u.id)+'</b><span style="font-size:12px;opacity:.75">'+esc(handle(u))+'</span></span><span style="font-weight:800;opacity:.9">'+Number(u.coins||0)+'</span>'+(u.id===me.id?'<span>✓</span>':'')+'</button>').join('')+
-   '<button class="ib" id="acAdd" style="padding:12px;text-align:left;border-radius:15px">＋ Добавить аккаунт</button></div></div>';
- document.body.appendChild(d);
- d.querySelector('#acClose').onclick=()=>d.remove();
- d.onclick=e=>{if(e.target===d)d.remove()};
- d.querySelector('#acAdd').onclick=()=>{d.remove();auth('in',true)};
- d.querySelectorAll('.acRow').forEach(b=>b.onclick=async()=>{
-   const id=b.dataset.ac;if(id===me.id)return d.remove();
-   const s=await db.doc('users/'+id).get();if(!s.exists)return toast('Аккаунт не найден');
-   me={id,...s.data()};try{localStorage.ekid=me.id;localStorage.ekproof=JSON.stringify({id:me.id,passHash:me.passHash})}catch(e){}
-   await sessionLogin(me.id,me.passHash);
-   cache={};d.remove();const bb=bad(me);bb?blocked(bb):start();
- });
+ return '<div id="acctBtn" style="display:flex;align-items:center;gap:7px;min-width:0;padding:5px 7px;border-radius:14px">'+ava(u,32)+'<span style="font-weight:700;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(u.name||u.username||'Аккаунт')+'</span></div>';
 }
 // ---- home ----
 function home(){clean();
  app.innerHTML=`<div class="top">${acctButton()}<div class="home-search" style="flex:1"><span>⌕</span><input id="hs" placeholder="Поиск" autocomplete="off"></div></div><div class="body" id="ls">${pinAll([])}<p class="c" style="color:var(--mut)">Чатов пока нет. Найдите пользователя через поиск выше.</p></div>${nav('chats')}`;
- bindNav();document.querySelector("#acctBtn").onclick=accountSwitcher;
+ bindNav();
  const seen={};let myG=[];let allUsers=[];let allUsersAt=0;let searchTimer=0;
  const draw=async()=>{const arr=Object.values(seen).sort((a,b)=>b.ts-a.ts);
   const rows=await Promise.all(arr.map(async m=>{if(m.anon)return`<div class="row" data-id="anon"><div class="av">🎁</div><div><div class="n">Анонимные подарки</div><div class="s">🎭 Подарок от неизвестного</div></div></div>`;const o=m.a===me.id?m.b:m.a,u=await getUser(o)||{name:o};
@@ -505,11 +561,11 @@ function addChat(){clean();
  $('#bk').onclick=home;$('#ng').onclick=()=>createGroup(false);$('#nc').onclick=()=>createGroup(true);$('#go').onclick=async()=>{const gv=$('#tid').value.trim();if(/^G-[A-Z0-9]{6}$/i.test(gv))return joinGroup(gv.toUpperCase());const u=await findUser($('#tid').value);if(!u)return $('#er').textContent='Пользователь не найден';if(u.id===me.id)return $('#er').textContent='Это вы';chat(u.id)}}
 // ---- chat ----
 async function chat(oid){clean();delete cache[oid];await loadGifts();let o=await getUser(oid);if(!o){try{o=await findUser(oid,true)}catch(e){}}o=o||{id:oid,name:(String(oid).startsWith('EK-')?'Пользователь':oid),username:''};if(!o.name)o.name=o.username?'@'+o.username:'Пользователь';if(!o.photo)o.photo='';cache[oid]=o;const k=cid(me.id,oid);
- app.innerHTML=`<div class="top"><button class="ib" id="bk">←</button>${ava(o,36)}<div id="hd" style="flex:1;cursor:pointer;min-width:0"><h1 style="font-size:16px">${nameV(o)}</h1><div id="st" style="font-size:12px;color:var(--mut)">${seenTxt(o)}</div></div><button class="ib" id="sc" title="Секретный чат">${getSecretRaw(oid)?'🔒':'🔓'}</button><button class="ib" id="dc">🗑</button></div><div class="body">${o.scam?'<div class="warn">⚠️ Пользователь отмечен как СКАМ. Не переводите деньги и не сообщайте данные.</div>':''}${o.fake?'<div class="warn">🎭 Аккаунт отмечен как ФЕЙК.</div>':''}<div id="strangerInfo"></div><div class="msgs" id="ms"></div></div>
+ app.innerHTML=`<div class="top"><button class="ib" id="bk">←</button>${ava(o,36)}<div id="hd" style="flex:1;cursor:pointer;min-width:0"><h1 style="font-size:16px">${nameV(o)}</h1><div id="st" style="font-size:12px;color:var(--mut)">${seenTxt(o)}</div></div><button class="ib" id="callAudio" title="Аудиозвонок">📞</button><button class="ib" id="callVideo" title="Видеозвонок">🎥</button><button class="ib" id="sc" title="Секретный чат">${getSecretRaw(oid)?'🔒':'🔓'}</button><button class="ib" id="dc">🗑</button></div><div class="body">${o.scam?'<div class="warn">⚠️ Пользователь отмечен как СКАМ. Не переводите деньги и не сообщайте данные.</div>':''}${o.fake?'<div class="warn">🎭 Аккаунт отмечен как ФЕЙК.</div>':''}<div id="strangerInfo"></div><div class="msgs" id="ms"></div></div>
  <div id="gp" style="display:none;padding:10px;border-top:1px solid var(--th);max-height:42vh;overflow:auto"></div>
  <div class="bar"><label class="ib" id="im" for="fl">📎</label><button class="ib" id="gf">🎁</button><input id="tx" placeholder="Сообщение"><button class="ib" id="mic">🎤</button><button class="pr" id="sd">➤</button></div><input type="file" id="fl" accept="image/*,video/*,audio/*,.pdf,.txt,.zip,.doc,.docx" hidden>`;
  let secretMode=!!getSecretRaw(oid);
- $('#bk').onclick=home;$('#hd').onclick=()=>viewUser(oid);
+ $('#bk').onclick=home;$('#hd').onclick=()=>viewUser(oid); addCallButtons(oid);
  $('#sc').onclick=async()=>{if(!getSecretRaw(oid))return secretModal(oid,v=>{secretMode=!!v;$('#sc').textContent=secretMode?'🔒':'🔓';renderMessages()});secretMode=!secretMode;$('#sc').textContent=secretMode?'🔒':'🔓';renderMessages()};
  const th=me.theme;if(isPrem(me)&&th&&th.bg){$('.body').style.background=th.bg;app.style.setProperty('--me',th.me)}
  $('#dc').onclick=async()=>{if(!await askConfirm('Удалить чат у обоих? Все сообщения и подарки в нём пропадут.'))return;const r=await db.collection('msgs').where('chat','==',cid(me.id,oid)).get();for(const d of r.docs)await db.doc('msgs/'+d.id).delete();home()};
@@ -618,7 +674,7 @@ async function claimTelegramLink(){
  }catch(e){}
  try{history.replaceState({},document.title,location.pathname+location.hash)}catch(e){}
 }
-function start(){applyAppTheme();addAcc(me.id);loadGifts();beat();grantCheck().catch(()=>{});claimTelegramLink().catch(()=>{});me.username?home():needUn()}
+function start(){applyAppTheme();initCallInbox();addAcc(me.id);loadGifts();beat();grantCheck().catch(()=>{});claimTelegramLink().catch(()=>{});me.username?home():needUn()}
 async function setUsername(raw){const un=raw.trim().toLowerCase().replace(/^@/,''),e=uerr(un);if(e)return e;if(un===me.username)return'';
  if((await db.doc('usernames/'+un).get()).exists)return'Юзернейм занят';await db.doc('usernames/'+un).set({uid:me.id});
  if(me.username)await db.doc('usernames/'+me.username).delete();await db.doc('users/'+me.id).update({username:un});me.username=un;cache={};return''}
@@ -826,7 +882,7 @@ async function ecoton(){clean();await fresh();
  <div style="display:flex;justify-content:space-between;align-items:center;margin:14px 2px 8px"><b>📜 Транзакции</b><button class="ib" id="ecoRefresh">↻</button></div>
  <div id="ecoTx"><div class="note c">Загрузка…</div></div>
  </div>${nav('ecoton')}`;
- bindNav();document.querySelector("#acctBtn").onclick=accountSwitcher;
+ bindNav();
  const load=async()=>{try{
    const [bal,tx]=await Promise.all([fetch('/api/store/me',{credentials:'include'}).then(r=>r.json()),fetch('/api/store/transactions',{credentials:'include'}).then(r=>r.json())]);
    if(bal.user){me.ecoton=Number(bal.user.ecoton||0);me.coins=Number(bal.user.coins||0);$('#ecoBalance').textContent=me.ecoton.toLocaleString('ru-RU')}
@@ -837,14 +893,13 @@ async function ecoton(){clean();await fresh();
 }
 async function profile(){clean();await fresh();
  app.innerHTML=`<div class="top">${acctButton()}<h1>Профиль</h1></div><div class="body">${card(me)}<div id="qr"></div><div class="note c">Так вас видят другие пользователи. QR-код содержит ваш юзернейм.</div></div>${nav('profile')}`;
- bindNav();document.querySelector("#acctBtn").onclick=accountSwitcher;showGifts(me.id);try{new QRCode($('#qr'),{text:handle(me),width:160,height:160})}catch(e){}}
+ bindNav();showGifts(me.id);try{new QRCode($('#qr'),{text:handle(me),width:160,height:160})}catch(e){}}
 async function viewUser(id){if(id===BOT.id)return sub('Профиль',()=>chat(id),card(BOT));cache={};const u=await getUser(id)||{id,name:id};sub('Профиль',()=>chat(id),card(u)+`<div class="c"><button class="pr" id="gb">🎁 Подарить подарок</button>${id===AIBOT.id?' <button class="ib" id="pb">★ Подарить Premium</button>':''} <button class="ib" id="wr">Написать</button><div id="gp" style="display:none;padding:10px;margin-top:10px;max-height:42vh;overflow:auto"></div></div>`);
  showGifts(id);$('#gb').onclick=()=>giftPanel($('#gp'),id,()=>{alert('Подарок отправлен 🎁');showGifts(id)});$('#wr').onclick=()=>chat(id);if(id===AIBOT.id)$('#pb').onclick=botPremium}
 async function settings(){clean();await fresh();
- const others=await Promise.all(accs().filter(x=>x!==me.id).map(async id=>{const u=await getUser(id);return u?`<button class="ib" data-sw="${id}" style="width:100%;text-align:left;margin-bottom:8px;padding:13px">🔁 Переключиться: ${esc(u.name)} ${esc(handle(u))}</button>`:''}));
  const B=(i,t)=>`<button class="ib" id="${i}" style="width:100%;text-align:left;margin-bottom:8px;padding:13px">${t}</button>`;
- app.innerHTML=`<div class="top">${acctButton()}<h1>Настройки</h1></div><div class="body"><p style="font-size:17px">💰 <b>${me.coins||0}</b> ЕКОКоинов</p>${isPrem(me)?`<p class="note">👑 EKOOOL Premium до ${new Date(me.premiumUntil).toLocaleDateString()}</p>`:''}${B('s8','👑 EKOOOL Premium')}${B('s13','🎨 Оформление')}${B('s9','🎨 Оформление чатов')}${B('s14','🔔 Уведомления')}${B('s15','🟢 Статус')}${B('s16','🛍 Магазин')}${B('s10','🔴 Заявка на красную галочку')}${B('s11','📞 Анонимный номер')}${B('s12','➕ Добавить аккаунт')}${others.join('')}${B('s1','✏️ Редактировать профиль')}${B('s2','🎁 Подарить коины')}${B('s3','📜 История коинов')}${B('s4','🔤 Юзернеймы')}${B('s5','🗑 Удалить аккаунт')}${canAdmin()?B('s6','🛠 Админ-панель'):''}${me&&me.supportAgent?B('sHelp','🛟 Центр поддержки'):''}${B('s7','Выйти')}</div>${nav('settings')}`;
- bindNav();document.querySelector("#acctBtn").onclick=accountSwitcher;$('#s12').onclick=()=>auth('in',true);document.querySelectorAll('[data-sw]').forEach(b=>b.onclick=async()=>{const sn=await db.doc('users/'+b.dataset.sw).get();if(!sn.exists)return toast('Аккаунт не найден');me={id:b.dataset.sw,...sn.data()};try{localStorage.ekid=me.id;localStorage.ekproof=JSON.stringify({id:me.id,passHash:me.passHash})}catch(e){}sessionLogin(me.id,me.passHash).catch(()=>{});cache={};const bb=bad(me);bb?blocked(bb):start()});
+ app.innerHTML=`<div class="top">${acctButton()}<h1>Настройки</h1></div><div class="body"><p style="font-size:17px">💰 <b>${me.coins||0}</b> ЕКОКоинов</p>${isPrem(me)?`<p class="note">👑 EKOOOL Premium до ${new Date(me.premiumUntil).toLocaleDateString()}</p>`:''}${B('s8','👑 EKOOOL Premium')}${B('s13','🎨 Оформление')}${B('s9','🎨 Оформление чатов')}${B('s14','🔔 Уведомления')}${B('s15','🟢 Статус')}${B('s16','🛍 Магазин')}${B('s10','🔴 Заявка на красную галочку')}${B('s11','📞 Анонимный номер')}${B('s1','✏️ Редактировать профиль')}${B('s2','🎁 Подарить коины')}${B('s3','📜 История коинов')}${B('s4','🔤 Юзернеймы')}${B('s5','🗑 Удалить аккаунт')}${canAdmin()?B('s6','🛠 Админ-панель'):''}${me&&me.supportAgent?B('sHelp','🛟 Центр поддержки'):''}${B('s7','Выйти')}</div>${nav('settings')}`;
+ bindNav();$('#s12').onclick=()=>auth('in',true);cache={};const bb=bad(me);bb?blocked(bb):start()});
  $('#s11').onclick=numScreen;$('#s10').onclick=async()=>{if(me.red)return alert('У вас уже есть красная галочка 🔴');if(me.redReq)return alert('Заявка уже отправлена. Ожидайте решения администратора.');if(!await askConfirm('Подать заявку на красную галочку? Она подтверждает, что аккаунт принадлежит человеку, а не боту.'))return;await db.doc('users/'+me.id).update({redReq:true});me.redReq=true;alert('Заявка отправлена ✔')};$('#s8').onclick=premium;$('#s13').onclick=appTheme;$('#s9').onclick=chatTheme;$('#s14').onclick=async()=>{if(!('Notification' in window))return alert('Уведомления не поддерживаются');const p=await Notification.requestPermission();alert(p==='granted'?'Уведомления включены ✓':'Уведомления не разрешены')};$('#s15').onclick=async()=>{const v=prompt('Статус: online / away / dnd / invisible',me.status||'online');if(!v||!['online','away','dnd','invisible'].includes(v))return alert('Неизвестный статус');await db.doc('users/'+me.id).update({status:v,statusTs:Date.now()});me.status=v;alert('Статус сохранён ✓');settings()};$('#s16').onclick=()=>appTheme;$('#s1').onclick=editProfile;$('#s2').onclick=giftCoins;$('#s3').onclick=coinHistory;$('#s4').onclick=unScreen;
  $('#s5').onclick=async()=>{if(!await askConfirm('Удалить аккаунт навсегда вместе с сообщениями?'))return;await delAcc(me.id);try{delete localStorage.ekid}catch(e){}me=null;auth()};
  if(canAdmin())$('#s6').onclick=admin;if(me&&me.supportAgent)$('#sHelp').onclick=helpSupport;$('#s7').onclick=async()=>{const id0=me.id;await sessionLogout();try{delete localStorage.ekid;delete localStorage.ekproof;localStorage.ekaccs=JSON.stringify(accs().filter(x=>x!==id0))}catch(e){}me=null;auth()}}
