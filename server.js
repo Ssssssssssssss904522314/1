@@ -509,7 +509,8 @@ app.post('/api/store/buy',async(req,res)=>{
         if(sellerId&&!seller)throw new Error('Аккаунт продавца не найден');
         const price=Math.floor(Number(p.price));
         if(!Number.isFinite(price)||price<1)throw new Error('Неверная цена товара');
-        if(p.delivery==null||String(p.delivery).trim()==='')throw new Error('Товар пока не готов к автовыдаче. Покупка не списана.');
+        const deliveryType=String(p.deliveryType||'instant')==='manual'?'manual':'instant';
+        if(deliveryType==='instant'&&(p.delivery==null||String(p.delivery).trim()===''))throw new Error('Товар пока не готов к автовыдаче. Покупка не списана.');
         if(p.stock!=null&&Number(p.stock)<=0)throw new Error('Товар закончился');
         const balance=Number(fresh.ecoton||0);
         if(balance<price)throw new Error('Недостаточно ECOTon');
@@ -518,7 +519,7 @@ app.post('/api/store/buy',async(req,res)=>{
         const nextProduct={...p};
         if(nextProduct.stock!=null)nextProduct.stock=Number(nextProduct.stock)-1;
         delivery=p.delivery==null?null:String(p.delivery);
-        order={id:orderId,uid:String(u.id),productId,sellerId:sellerId||'',sellerUsername:String(p.sellerUsername||''),productName:String(p.name||'Товар'),type:String(p.type||'other'),price,status:'paid',createdAt:Date.now(),deliveryType:String(p.deliveryType||'manual')};
+        order={id:orderId,uid:String(u.id),productId,sellerId:sellerId||'',sellerUsername:String(p.sellerUsername||''),productName:String(p.name||'Товар'),type:String(p.type||'other'),price,status:deliveryType==='manual'?'awaiting_delivery':'paid',createdAt:Date.now(),deliveryType};
         await client.query('UPDATE ekoool_kv SET data=$3 WHERE collection=$1 AND id=$2',['users',String(u.id),JSON.stringify({...fresh,ecoton:remaining})]);
         if(sellerId){
           await client.query('UPDATE ekoool_kv SET data=$3 WHERE collection=$1 AND id=$2',['users',sellerId,JSON.stringify({...seller,ecoton:Number(seller.ecoton||0)+price})]);
@@ -539,7 +540,8 @@ app.post('/api/store/buy',async(req,res)=>{
       if(sellerId&&!seller)throw new Error('Аккаунт продавца не найден');
       const price=Math.floor(Number(p.price));
       if(!Number.isFinite(price)||price<1)throw new Error('Неверная цена товара');
-      if(p.delivery==null||String(p.delivery).trim()==='')throw new Error('Товар пока не готов к автовыдаче. Покупка не списана.');
+      const deliveryType=String(p.deliveryType||'instant')==='manual'?'manual':'instant';
+      if(deliveryType==='instant'&&(p.delivery==null||String(p.delivery).trim()===''))throw new Error('Товар пока не готов к автовыдаче. Покупка не списана.');
       if(p.stock!=null&&Number(p.stock)<=0)throw new Error('Товар закончился');
       const balance=Number(fresh.ecoton||0);
       if(balance<price)throw new Error('Недостаточно ECOTon');
@@ -555,7 +557,7 @@ app.post('/api/store/buy',async(req,res)=>{
       await putDoc('ecoton_txs','buy_'+Date.now()+'_'+crypto.randomBytes(3).toString('hex'),{uid:u.id,ecoton:-price,type:'purchase',orderId,productId,sellerId:sellerId||null,ts:Date.now()});
       if(sellerId)await putDoc('ecoton_txs','sale_'+Date.now()+'_'+crypto.randomBytes(3).toString('hex'),{uid:sellerId,from:u.id,ecoton:price,type:'sale',orderId,productId,ts:Date.now()});
     }
-    res.json({ok:true,orderId:order.id,remaining,delivery,deliveryType:order.deliveryType,sellerUsername:order.sellerUsername,message:'Покупка оформлена. Заказ #'+order.id});
+    res.json({ok:true,orderId:order.id,remaining,delivery,deliveryType:order.deliveryType,sellerUsername:order.sellerUsername,message:order.deliveryType==='manual'?'Оплата прошла. Откройте чат с продавцом.':'Товар выдан автоматически.'});
   }catch(e){res.status(400).json({error:e.message||'Не удалось оформить покупку'})}
 });
 async function marketTrust(sellerId){
@@ -589,6 +591,36 @@ app.post('/api/store/review',async(req,res)=>{
     res.json({ok:true,reviewId:id,...trust});
   }catch(e){res.status(500).json({error:e.message||'Не удалось сохранить отзыв'})}
 });
+async function marketOrderAccess(req,orderId){
+  const u=await storeAuth(req);if(!u)return {u:null,o:null,ok:false};
+  const o=await getDoc('store_orders',orderId);if(!o)return {u,o:null,ok:false};
+  const ok=String(o.uid)===String(u.id)||String(o.sellerId||'')===String(u.id);
+  return {u,o,ok};
+}
+app.get('/api/store/chat/:orderId',async(req,res)=>{
+  try{
+    const {u,o,ok}=await marketOrderAccess(req,String(req.params.orderId));
+    if(!u)return res.status(401).json({error:'Войдите в EKOOOL'});
+    if(!ok)return res.status(403).json({error:'Нет доступа к чату заказа'});
+    const rows=(await getCollection('store_chats')).map(x=>({id:x.id,...x.data}))
+      .filter(x=>String(x.orderId)===String(o.id)).sort((a,b)=>Number(a.ts||0)-Number(b.ts||0)).slice(-100);
+    res.json({ok:true,order:o,messages:rows});
+  }catch(e){res.status(500).json({error:e.message||'Не удалось загрузить чат'})}
+});
+app.post('/api/store/chat/:orderId',async(req,res)=>{
+  try{
+    const {u,o,ok}=await marketOrderAccess(req,String(req.params.orderId));
+    if(!u)return res.status(401).json({error:'Войдите в EKOOOL'});
+    if(!ok)return res.status(403).json({error:'Нет доступа к чату заказа'});
+    const text=String(req.body?.text||'').trim().slice(0,3000);
+    if(!text)return res.status(400).json({error:'Введите сообщение'});
+    const id='chat_'+Date.now()+'_'+crypto.randomBytes(4).toString('hex');
+    const msg={orderId:String(o.id),fromId:String(u.id),fromUsername:String(u.username||''),text,ts:Date.now()};
+    await putDoc('store_chats',id,msg);
+    if(o.status==='awaiting_delivery'&&String(o.sellerId||'')===String(u.id))await patchDoc('store_orders',String(o.id),{status:'seller_replied',updatedAt:Date.now()});
+    res.json({ok:true,message:{id,...msg}});
+  }catch(e){res.status(500).json({error:e.message||'Не удалось отправить сообщение'})}
+});
 app.post('/api/store/sell',async(req,res)=>{
   try{
     const u=await storeUser(req);if(!u)return res.status(401).json({error:'Войдите в EKOOOL'});
@@ -604,9 +636,10 @@ app.post('/api/store/sell',async(req,res)=>{
     const allowed=['username','number','account','channel','group','premium','gift','other'];
     if(!name||!allowed.includes(type)||!Number.isFinite(price)||price<1||price>1000000000)return res.status(400).json({error:'Проверьте название, категорию и цену'});
     if(stock!==null&&(!Number.isFinite(stock)||stock<1||stock>1000000))return res.status(400).json({error:'Остаток должен быть от 1 до 1 000 000 или пустым для ∞'});
-    if(!delivery)return res.status(400).json({error:'Укажите данные, которые покупатель получит после оплаты'});
+    const deliveryType=String(req.body?.deliveryType||'instant')==='manual'?'manual':'instant';
+    if(deliveryType==='instant'&&!delivery)return res.status(400).json({error:'Для автовыдачи укажите данные товара'});
     const id='userprod_'+Date.now()+'_'+crypto.randomBytes(4).toString('hex');
-    await putDoc('store_products',id,{name,type,description,image,deliveryType:'instant',delivery,price,stock,active:true,sellerId:String(u.id),sellerUsername:String(u.username||''),createdAt:Date.now()});
+    await putDoc('store_products',id,{name,type,description,image,deliveryType,delivery:delivery||null,price,stock,active:true,sellerId:String(u.id),sellerUsername:String(u.username||''),createdAt:Date.now()});
     if(!u.marketSeller)await patchDoc('users',String(u.id),{marketSeller:true,marketTrustBadge:(u.marketTrustBadge||'check'),marketBadReviews30:Number(u.marketBadReviews30||0),marketTrustUpdatedAt:Date.now()});
     res.json({ok:true,id});
   }catch(e){res.status(500).json({error:e.message||'Не удалось выставить товар'})}
