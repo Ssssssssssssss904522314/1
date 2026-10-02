@@ -954,10 +954,6 @@ function giftCoins(){sub('Подарить коины',settings,`<p>Баланс
 async function coinHistory(){sub('История коинов',settings,'<p class="note c">Загрузка…</p>');
  const r=await db.collection('txs').where('uid','==',me.id).get(),a=r.docs.map(d=>d.data()).sort((x,y)=>y.ts-x.ts);
  $('.body').innerHTML=`<p>Баланс: <b>${me.coins||0}</b></p>`+(a.map(t=>`<div class="row" style="cursor:default"><div style="flex:1"><div class="n">${esc(t.note)}</div><div class="s">${new Date(t.ts).toLocaleString()}</div></div><b style="color:${t.amt<0?'#e53935':'#2e7d32'}">${t.amt>0?'+':''}${t.amt}</b></div>`).join('')||'<p class="c note">Операций нет</p>')}
-async function ugApi(path,body){
- const h={'Content-Type':'application/json'};if(me&&me.id&&me.passHash){h['X-EKOOOL-User']=me.id;h['X-EKOOOL-Proof']=me.passHash}
- return fetch(path,{method:'POST',headers:h,credentials:'include',body:JSON.stringify(body||{})}).then(async r=>{const x=await r.json().catch(()=>({}));if(!r.ok)throw new Error(x.error||'Ошибка уникального подарка');return x});
-}
 async function giftView(m){const g=GIFTS.find(x=>x.k===m.gift),u=await getUser(m.a)||{name:m.a},hid=m.anon&&m.b===me.id,half=Math.floor(g.p/2),can=m.b===me.id&&!m.sold&&!m.nosell;
  const d=document.createElement('div');d.style.cssText='position:fixed;inset:0;background:#0009;display:flex;align-items:center;justify-content:center;z-index:9';
  d.innerHTML=`<div style="background:var(--card);border-radius:18px;padding:20px;width:min(88vw,340px);text-align:center"><div id="ga" class="gbox">🎁</div><h3 style="margin:4px 0">${esc(g.n)}</h3><p>Отправитель: ${hid?'Аноним 🎭':m.a===me.id?'Вы':nameV(u)}<br><span class="note">${hid?'':esc(handle(u)||m.a)+' · '}${new Date(m.ts).toLocaleString()}</span></p>${m.sold?'<p>Подарок продан</p>':m.nosell?'<p class="note">Отправитель запретил продажу</p>':''}${can?`<button class="pr" id="sl">Продать за ${half} ЕКОКоинов</button>`:''}<p><button class="ib" id="cl">Закрыть</button></p></div>`;
