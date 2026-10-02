@@ -509,6 +509,7 @@ app.post('/api/store/buy',async(req,res)=>{
         if(sellerId&&!seller)throw new Error('Аккаунт продавца не найден');
         const price=Math.floor(Number(p.price));
         if(!Number.isFinite(price)||price<1)throw new Error('Неверная цена товара');
+        if(p.delivery==null||String(p.delivery).trim()==='')throw new Error('Товар пока не готов к автовыдаче. Покупка не списана.');
         if(p.stock!=null&&Number(p.stock)<=0)throw new Error('Товар закончился');
         const balance=Number(fresh.ecoton||0);
         if(balance<price)throw new Error('Недостаточно ECOTon');
@@ -538,6 +539,7 @@ app.post('/api/store/buy',async(req,res)=>{
       if(sellerId&&!seller)throw new Error('Аккаунт продавца не найден');
       const price=Math.floor(Number(p.price));
       if(!Number.isFinite(price)||price<1)throw new Error('Неверная цена товара');
+      if(p.delivery==null||String(p.delivery).trim()==='')throw new Error('Товар пока не готов к автовыдаче. Покупка не списана.');
       if(p.stock!=null&&Number(p.stock)<=0)throw new Error('Товар закончился');
       const balance=Number(fresh.ecoton||0);
       if(balance<price)throw new Error('Недостаточно ECOTon');
