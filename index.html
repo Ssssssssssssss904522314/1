@@ -699,7 +699,7 @@ async function claimTelegramLink(){
  }catch(e){}
  try{history.replaceState({},document.title,location.pathname+location.hash)}catch(e){}
 }
-function start(){applyAppTheme();initCallInbox();addAcc(me.id);loadGifts();beat();grantCheck().catch(()=>{});claimTelegramLink().catch(()=>{});me.username?home():needUn()}
+function start(){try{applyAppTheme()}catch(e){console.error('theme',e)}try{initCallInbox()}catch(e){console.error('calls',e)}try{addAcc(me.id)}catch(e){console.error('accounts',e)}try{loadGifts().catch(e=>console.error('gifts',e))}catch(e){console.error('gifts',e)}try{beat()}catch(e){console.error('beat',e)}try{grantCheck().catch(e=>console.error('grant',e))}catch(e){console.error('grant',e)}try{claimTelegramLink().catch(e=>console.error('telegram',e))}catch(e){console.error('telegram',e)}try{me.username?home():needUn()}catch(e){console.error('home',e);app.innerHTML='<div class="body c" style="padding-top:18vh"><h2>Вход выполнен</h2><p class="note">Аккаунт авторизован, но интерфейс не загрузился. Обновите страницу.</p><button class="pr" id="reload">Обновить</button></div>';document.getElementById('reload').onclick=()=>location.reload()}}
 async function setUsername(raw){const un=raw.trim().toLowerCase().replace(/^@/,''),e=uerr(un);if(e)return e;if(un===me.username)return'';
  if((await db.doc('usernames/'+un).get()).exists)return'Юзернейм занят';await db.doc('usernames/'+un).set({uid:me.id});
  if(me.username)await db.doc('usernames/'+me.username).delete();await db.doc('users/'+me.id).update({username:un});me.username=un;cache={};return''}
