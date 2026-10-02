@@ -549,7 +549,7 @@ app.post('/api/store/buy',async(req,res)=>{
       const orderId='order_'+Date.now()+'_'+crypto.randomBytes(4).toString('hex');
       const nextProduct={...p};if(nextProduct.stock!=null)nextProduct.stock=Number(nextProduct.stock)-1;
       delivery=p.delivery==null?null:String(p.delivery);
-      order={id:orderId,uid:String(u.id),productId,sellerId:sellerId||'',sellerUsername:String(p.sellerUsername||''),productName:String(p.name||'Товар'),type:String(p.type||'other'),price,status:'paid',createdAt:Date.now(),deliveryType:String(p.deliveryType||'manual')};
+      order={id:orderId,uid:String(u.id),productId,sellerId:sellerId||'',sellerUsername:String(p.sellerUsername||''),productName:String(p.name||'Товар'),type:String(p.type||'other'),price,status:deliveryType==='manual'?'awaiting_delivery':'paid',createdAt:Date.now(),deliveryType};
       await patchDoc('users',u.id,{ecoton:remaining});
       if(sellerId)await patchDoc('users',sellerId,{ecoton:Number(seller.ecoton||0)+price});
       await putDoc('store_products',productId,nextProduct);
