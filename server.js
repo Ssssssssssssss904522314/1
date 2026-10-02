@@ -142,15 +142,19 @@ function readCookie(req,name){
   return '';
 }
 const sessionHash=t=>crypto.createHash('sha256').update(String(t)).digest('hex');
+const twoFAHash=v=>crypto.createHash('sha256').update('EKOOOL-2FA:'+String(v)).digest('hex');
+const isPurchasedAccount=u=>!!(u&&((u.purchased===true)||u.purchaseOrderId||u.marketTransferredAt||u.bio==='Покупной аккаунт EKOOOL'||u.bio==='Персональный покупной аккаунт EKOOOL'));
+const genTwoFA=()=>{const chars='ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789';const b=crypto.randomBytes(10);let out='';for(const x of b)out+=chars[x%chars.length];return out};
+async function sendTelegramBotMessage(token,chatId,text){if(!token||!chatId)return false;try{const r=await fetch('https://api.telegram.org/bot'+token+'/sendMessage',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({chat_id:chatId,text})});const x=await r.json().catch(()=>({}));return !!(r.ok&&x.ok)}catch(e){return false}}
 function setSessionCookie(res,token){
   res.setHeader('Set-Cookie',SESSION_COOKIE+'='+encodeURIComponent(token)+'; Max-Age='+Math.floor(SESSION_TTL/1000)+'; Path=/; Secure; HttpOnly; SameSite=Lax');
 }
 function clearSessionCookie(res){
   res.setHeader('Set-Cookie',SESSION_COOKIE+'=; Max-Age=0; Path=/; Secure; HttpOnly; SameSite=Lax');
 }
-async function createSession(uid){
+async function createSession(uid,meta={}){
   const token=crypto.randomBytes(32).toString('hex'),sid=sessionHash(token);
-  await putDoc('sessions',sid,{uid:String(uid),expires:Date.now()+SESSION_TTL});
+  await putDoc('sessions',sid,{uid:String(uid),expires:Date.now()+SESSION_TTL,...meta});
   return token;
 }
 async function sessionAuth(req){
@@ -159,7 +163,9 @@ async function sessionAuth(req){
   const sid=sessionHash(token),s=await getDoc('sessions',sid);
   if(!s||s.expires<Date.now()){if(s)await deleteDoc('sessions',sid);return null}
   const u=await getDoc('users',String(s.uid));
-  return u&&u.passHash?{id:String(s.uid),...u}:null;
+  if(!u||!u.passHash)return null;
+  if(isPurchasedAccount(u)&&s.mfaVerified!==true)return null;
+  return {id:String(s.uid),...u};
 }
 function adminToken(){return crypto.createHmac('sha256',ADMIN_PASSWORD).update('ekoool-admin').digest('hex')}
 function isAdmin(req){return !!ADMIN_PASSWORD&&(req.headers.authorization||'')==='Bearer '+adminToken()}
@@ -170,9 +176,11 @@ async function userAuth(req){
   const proof=String(req.headers['x-ekoool-proof']||'').trim();
   if(!uid||!proof)return null;
   const u=await getDoc('users',uid);
-  return u&&u.passHash&&proof===u.passHash?{id:uid,...u}:null;
+  if(!u||!u.passHash||proof!==u.passHash)return null;
+  if(isPurchasedAccount(u))return null;
+  return {id:uid,...u};
 }
-function publicUser(u){if(!u)return null;const x={...u};delete x.passHash;delete x.salt;delete x.email;x.tester=!!(u.tester||u.testerBadge);return x}
+function publicUser(u){if(!u)return null;const x={...u};delete x.passHash;delete x.salt;delete x.email;delete x.twoFA;delete x.twoFAHash;delete x.twoFAChatId;delete x.twoFAIssuedAt;x.tester=!!(u.tester||u.testerBadge);return x}
 async function canWriteDoc(req,c,id,body){
   if(isAdmin(req))return true;
   const u=await userAuth(req);
@@ -214,6 +222,8 @@ async function canWriteDoc(req,c,id,body){
   return false;
 }
 const loginAttempts=new Map();
+const authLoginAttempts=new Map();
+function authLoginAllowed(ip,uid){const now=Date.now(),key=String(ip||'unknown')+'|'+String(uid||'unknown'),a=authLoginAttempts.get(key)||{n:0,at:now};if(now-a.at>10*60*1000){a.n=0;a.at=now}if(a.n>=12)return false;a.n++;authLoginAttempts.set(key,a);return true}
 function adminLoginAllowed(ip){
   const now=Date.now(),a=loginAttempts.get(ip)||{n:0,at:now};
   if(now-a.at>10*60*1000){a.n=0;a.at=now}
@@ -316,12 +326,39 @@ app.post('/api/security/transaction-event',async(req,res)=>{
   }catch(e){res.status(500).json({error:e.message||'Не удалось записать транзакцию'})}
 });
 
+app.post('/api/auth/login',async(req,res)=>{
+  try{
+    const login=String(req.body?.username||req.body?.login||req.body?.phone||'').trim();
+    const password=String(req.body?.password||'');
+    const twoFA=String(req.body?.twoFA||'').trim();
+    const raw=login.toLowerCase().replace(/^@/,'');
+    let u=null,uid='';
+    if(raw){const map=await getDoc('usernames',raw);if(map?.uid){uid=String(map.uid);u=await getDoc('users',uid)}}
+    if(!u&&/^\+?888\d{7}$/.test(login.replace(/[\s()-]/g,''))){const n=login.replace(/[\s()+-]/g,'');const nm=await getDoc('numbers',n);if(nm?.uid){uid=String(nm.uid);u=await getDoc('users',uid)}}
+    if(!u){const docs=await getCollection('users'),normalized=login.replace(/[\s-]/g,'');for(const x of docs){const d=x.data||{},nums=[d.phone,d.phone2,d.phoneNumber,d.number].filter(Boolean).map(String);if(nums.some(n=>n===login||n.replace(/[\s-]/g,'')===normalized)){uid=String(x.id);u=d;break}}}
+    const ip=String(req.ip||req.socket?.remoteAddress||'unknown');if(!authLoginAllowed(ip,uid))return res.status(429).json({error:'Слишком много попыток входа. Попробуйте через 10 минут.'});
+    if(!u||!u.passHash)return res.status(401).json({error:'Неверный юзернейм/номер или пароль'});
+    if(u.banned||Number(u.blockedUntil||0)>Date.now())return res.status(403).json({error:'Этот аккаунт временно недоступен.'});
+    const salt=String(u.salt||''),hash=crypto.createHash('sha256').update(salt+password).digest('hex');
+    if(hash!==u.passHash)return res.status(401).json({error:'Неверный юзернейм/номер или пароль'});
+    const purchased=isPurchasedAccount(u);
+    if(purchased){
+      if(!twoFA){if(!u.twoFAHash&&u.twoFA)await patchDoc('users',uid,{twoFAHash:twoFAHash(u.twoFA)});return res.status(401).json({error:'Для этого покупного аккаунта требуется 2FA-код из Telegram-бота.',code:'twofa_required',requires2FA:true});}
+      const ok2=u.twoFAHash?twoFAHash(twoFA)===String(u.twoFAHash):String(u.twoFA||'')===twoFA;
+      if(!ok2)return res.status(401).json({error:'Неверный 2FA-код.',code:'invalid_2fa',requires2FA:true});
+    }
+    const token=await createSession(uid,{mfaVerified:purchased});setSessionCookie(res,token);
+    res.json({ok:true,id:uid,requires2FA:purchased,user:publicUser(u)});
+  }catch(e){res.status(500).json({error:e.message||'Ошибка входа'})}
+});
+
 app.post('/api/auth/session',async(req,res)=>{
   try{
     const uid=String(req.body?.uid||'').trim(),proof=String(req.body?.proof||'').trim();
     const u=await getDoc('users',uid);
     if(!uid||!proof||!u||!u.passHash||proof!==u.passHash)return res.status(401).json({error:'Unauthorized'});
-    setSessionCookie(res,await createSession(uid));
+    if(isPurchasedAccount(u))return res.status(401).json({error:'Для покупного аккаунта требуется вход с 2FA.',code:'twofa_required',requires2FA:true});
+    setSessionCookie(res,await createSession(uid,{mfaVerified:false}));
     res.json({ok:true,id:uid});
   }catch(e){res.status(500).json({error:e.message})}
 });
@@ -1196,16 +1233,17 @@ function tgRandomPassword(){
   for(const b of bytes)out+=chars[b%chars.length];
   return out;
 }
+function tgRandomTwoFA(){return genTwoFA()}
 async function tgCreatePersonalAccount(order){
   const forever=order.kind==='forever',infinite=order.kind==='infinite_coins';
   const days=Math.max(0,Math.floor(Number(order.days)||0)),coins=Math.max(0,Math.floor(Number(order.coins)||0));
   const now=Date.now(),salt=crypto.randomBytes(8).toString('hex'),password=tgRandomPassword();
-  const twoFA='us109ll789011';
+  const twoFA=tgRandomTwoFA();
   const passHash=crypto.createHash('sha256').update(salt+password).digest('hex');
   let username;
   do{username='ekoool_'+crypto.randomBytes(5).toString('hex')}while(await getDoc('usernames',username));
   const id='buy'+crypto.randomBytes(7).toString('hex');
-  const user={name:'EKOOOL Premium',photo:'',bio:'Персональный покупной аккаунт EKOOOL',verified:false,red:false,purchased:true,premiumForever:forever,premiumUntil:forever?null:(now+days*24*60*60*1000),premiumStart:forever?now:null,premiumDays:forever?0:days,coins:infinite?0:coins,coinsInfinite:infinite,username,extra:[],salt,passHash,twoFA,lastSeen:now,ts:now,purchaseOrderId:String(order.orderId)};
+  const user={name:'EKOOOL Premium',photo:'',bio:'Персональный покупной аккаунт EKOOOL',verified:false,red:false,purchased:true,premiumForever:forever,premiumUntil:forever?null:(now+days*24*60*60*1000),premiumStart:forever?now:null,premiumDays:forever?0:days,coins:infinite?0:coins,coinsInfinite:infinite,username,extra:[],salt,passHash,twoFAHash:twoFAHash(twoFA),twoFAChatId:String(order.userId||''),twoFAIssuedAt:now,lastSeen:now,ts:now,purchaseOrderId:String(order.orderId)};
   await putDoc('users',id,user);
   await putDoc('usernames',username,{uid:id});
   return {id,username,password,twoFA,user};
@@ -1237,10 +1275,11 @@ async function tgCreatePurchasedAccount(chatId,userId){
   if(username.length<8)username='ekoool_'+crypto.randomBytes(4).toString('hex');
   if(await getDoc('usernames',username))username='ekoool_'+crypto.randomBytes(5).toString('hex');
   const now=Date.now();
-  const user={name:'EKOOOL Premium',photo:'',bio:'Покупной аккаунт EKOOOL',verified:false,red:true,purchased:true,premiumUntil:now+90*24*60*60*1000,premiumStart:now,coins:1000,username,extra:[],salt,passHash,lastSeen:now,ts:now};
+  const twoFA=tgRandomTwoFA();
+  const user={name:'EKOOOL Premium',photo:'',bio:'Покупной аккаунт EKOOOL',verified:false,red:true,purchased:true,premiumUntil:now+90*24*60*60*1000,premiumStart:now,coins:1000,username,extra:[],salt,passHash,twoFAHash:twoFAHash(twoFA),twoFAChatId:String(chatId),twoFAIssuedAt:now,lastSeen:now,ts:now};
   await putDoc('users',id,user);
   await putDoc('usernames',username,{uid:id});
-  return tg('sendMessage',{chat_id:chatId,text:'✅ АККАУНТ УСПЕШНО СОЗДАН!\n\n👤 Юзернейм: @'+username+'\n🔐 Пароль / 2FA: '+password+'\n👑 Premium: 3 месяца\n🔴 Красная верификация: включена\n\n⚠️ Сохраните данные для входа.',reply_markup:tgKeyboard()});
+  return tg('sendMessage',{chat_id:chatId,text:'✅ АККАУНТ УСПЕШНО СОЗДАН!\n\n👤 Юзернейм: @'+username+'\n🔐 Пароль: '+password+'\n🔑 2FA: '+twoFA+'\n👑 Premium: 3 месяца\n🔴 Красная верификация: включена\n\n⚠️ Сохраните данные для входа.',reply_markup:tgKeyboard()});
 }
 // Free purchased-account test command. This simulates a completed 50-Star purchase.
 async function tgFreePurchasedAccount(chatId,userId){
@@ -1495,7 +1534,7 @@ app.post('/api/telegram/webhook',async(req,res)=>{
           try{
             const acc=await tgCreatePersonalAccount(order);
             await patchDoc('telegram_personal_orders',oid,{status:'delivered',accountId:acc.id,username:acc.username,deliveredAt:Date.now(),chargeId:p.telegram_payment_charge_id});
-            await tg('sendMessage',{chat_id:msg.chat.id,text:'🎉 ПОКУПКА УСПЕШНА!\n\n👤 Данные для входа\nЮзернейм: @'+acc.username+'\n🔐 Пароль: '+acc.password+'\n\n👑 Premium: '+order.days+' дней\n🪙 ЭКОкоинов: '+order.coins.toLocaleString('ru-RU')+'\n⭐ Оплачено: '+order.stars+' ⭐\n\n⚠️ Сохраните данные для входа. После этого оцените работу бота:',reply_markup:{inline_keyboard:[
+            await tg('sendMessage',{chat_id:msg.chat.id,text:'🎉 ПОКУПКА УСПЕШНА!\n\n👤 Данные для входа\nЮзернейм: @'+acc.username+'\n🔐 Пароль: '+acc.password+'\n🔑 2FA: '+acc.twoFA+'\n\n👑 Premium: '+order.days+' дней\n🪙 ЭКОкоинов: '+order.coins.toLocaleString('ru-RU')+'\n⭐ Оплачено: '+order.stars+' ⭐\n\n⚠️ Сохраните данные для входа. После этого оцените работу бота:',reply_markup:{inline_keyboard:[
               [{text:'⭐ 1',callback_data:'personal_rate_1_'+oid},{text:'⭐ 2',callback_data:'personal_rate_2_'+oid},{text:'⭐ 3',callback_data:'personal_rate_3_'+oid}],
               [{text:'⭐ 4',callback_data:'personal_rate_4_'+oid},{text:'⭐ 5',callback_data:'personal_rate_5_'+oid}]
             ]}});
@@ -1805,7 +1844,7 @@ async function marketCreateListing(chatId,userId,destinationUsername,price){
   await putDoc('market_listings',id,{sellerId:String(userId),sellerChatId:String(chatId),destinationId:String(destMap.uid),destinationUsername:String(destinationUsername).replace(/^@/,''),username:String(seller.username||''),price:p,status:'active',createdAt:Date.now()});
   return {id};
 }
-async function marketCompletePurchase(listingId,buyerId){
+async function marketCompletePurchase(listingId,buyerId,buyerChatId){
   if(pool){
     const client=await pool.connect();
     try{
@@ -1823,7 +1862,8 @@ async function marketCompletePurchase(listingId,buyerId){
       if(bc<price)throw new Error('Недостаточно ЭКОкоинов.');
       const newPass=marketPassword(),salt=crypto.randomBytes(8).toString('hex');
       const passHash=marketHash(newPass,salt);
-      const transferred={...seller,salt,passHash,twoFA:'',telegramChatId:'',telegramLinkedAt:0,marketTransferredAt:Date.now(),marketPreviousOwner:String(l.sellerId),lastSeen:Date.now()};
+      const twoFA=genTwoFA(),twoFAIssuedAt=Date.now();
+      const transferred={...seller,salt,passHash,twoFAHash:twoFAHash(twoFA),twoFAChatId:String(buyerChatId||''),twoFAIssuedAt,twoFA:'',purchased:true,telegramChatId:'',telegramLinkedAt:0,marketTransferredAt:twoFAIssuedAt,marketPreviousOwner:String(l.sellerId),lastSeen:Date.now()};
       const newDestCoins=Number(dest.coins||0)+price;
       await client.query('UPDATE ekoool_kv SET data=$3 WHERE collection=$1 AND id=$2',['users',String(buyerId),JSON.stringify({...buyer,coins:bc-price})]);
       await client.query('UPDATE ekoool_kv SET data=$3 WHERE collection=$1 AND id=$2',['users',String(l.destinationId),JSON.stringify({...dest,coins:newDestCoins})]);
@@ -1831,7 +1871,7 @@ async function marketCompletePurchase(listingId,buyerId){
       await client.query('UPDATE ekoool_kv SET data=$3 WHERE collection=$1 AND id=$2',['market_listings',String(listingId),JSON.stringify({...l,status:'sold',buyerId:String(buyerId),soldAt:Date.now()})]);
       await client.query("DELETE FROM ekoool_kv WHERE collection=$1 AND data->>'uid'=$2",['sessions',String(l.sellerId)]);
       await client.query('COMMIT');
-      return {username:seller.username,password:newPass,price,destinationUsername:l.destinationUsername};
+      return {username:seller.username,password:newPass,twoFA,price,destinationUsername:l.destinationUsername};
     }catch(e){await client.query('ROLLBACK');throw e}finally{client.release()}
   }
   const l=await getDoc('market_listings',String(listingId));
@@ -1844,9 +1884,10 @@ async function marketCompletePurchase(listingId,buyerId){
   const newPass=marketPassword(),salt=crypto.randomBytes(8).toString('hex');
   await patchDoc('users',String(buyerId),{coins:Number(buyer.coins||0)-price});
   await patchDoc('users',String(l.destinationId),{coins:Number(dest.coins||0)+price});
-  await patchDoc('users',String(l.sellerId),{salt,passHash:marketHash(newPass,salt),twoFA:'',telegramChatId:'',telegramLinkedAt:0,marketTransferredAt:Date.now(),marketPreviousOwner:String(l.sellerId)});
+  const twoFA=genTwoFA(),twoFAIssuedAt=Date.now();
+  await patchDoc('users',String(l.sellerId),{salt,passHash:marketHash(newPass,salt),twoFAHash:twoFAHash(twoFA),twoFAChatId:String(buyerChatId||''),twoFAIssuedAt,twoFA:'',purchased:true,telegramChatId:'',telegramLinkedAt:0,marketTransferredAt:twoFAIssuedAt,marketPreviousOwner:String(l.sellerId)});
   await patchDoc('market_listings',String(listingId),{status:'sold',buyerId:String(buyerId),soldAt:Date.now()});
-  return {username:seller.username,password:newPass,price,destinationUsername:l.destinationUsername};
+  return {username:seller.username,password:newPass,twoFA,price,destinationUsername:l.destinationUsername};
 }
 async function setupMarketTelegram(){
   if(!TELEGRAM_MARKET_BOT_TOKEN)return;
@@ -1913,9 +1954,9 @@ app.post('/api/telegram/market-webhook',async(req,res)=>{
           const buyer=await getDoc('users',String(st.buyerId));
           if(!buyer||marketHash(text,buyer.salt)!==buyer.passHash)return mtg('sendMessage',{chat_id:chatId,text:'❌ Неверный пароль. Попробуйте ещё раз.'});
           try{
-            const result=await marketCompletePurchase(st.listingId,st.buyerId);
+            const result=await marketCompletePurchase(st.listingId,st.buyerId,chatId);
             await deleteDoc('telegram_market_state',String(chatId));
-            return mtg('sendMessage',{chat_id:chatId,text:'🎉 ПОКУПКА УСПЕШНА!\n\n👤 Аккаунт: @'+result.username+'\n🔐 Новый пароль: '+result.password+'\n🪙 Списано: '+result.price.toLocaleString('ru-RU')+' ЭКОкоинов\n\n⚠️ Старый владелец больше не может войти по старому паролю. Сохраните новый пароль.',reply_markup:marketKeyboard()});
+            return mtg('sendMessage',{chat_id:chatId,text:'🎉 ПОКУПКА УСПЕШНА!\n\n👤 Аккаунт: @'+result.username+'\n🔐 Новый пароль: '+result.password+'\n🔑 2FA: '+result.twoFA+'\n🪙 Списано: '+result.price.toLocaleString('ru-RU')+' ЭКОкоинов\n\n⚠️ Старый владелец больше не может войти по старому паролю. Сохраните новый пароль.',reply_markup:marketKeyboard()});
           }catch(e){
             return mtg('sendMessage',{chat_id:chatId,text:'❌ Сделка не выполнена: '+String(e.message||e),reply_markup:marketKeyboard()});
           }
