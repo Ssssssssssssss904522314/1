@@ -212,7 +212,7 @@ function adminLoginAllowed(ip){
   a.n++;loginAttempts.set(ip,a);return true;
 }
 
-app.get('/api/calls/turn-credentials',async(req,res)=>{try{if(!TURN_KEY_ID||!TURN_KEY_API_TOKEN)return res.json({iceServers:[{urls:'stun:stun.cloudflare.com:3478'},{urls:'stun:stun.l.google.com:19302'}],turnConfigured:false});const r=await fetch('https://rtc.live.cloudflare.com/v1/turn/keys/'+encodeURIComponent(TURN_KEY_ID)+'/credentials/generate-ice-servers',{method:'POST',headers:{'Authorization':'Bearer '+TURN_KEY_API_TOKEN,'Content-Type':'application/json'},body:JSON.stringify({ttl:86400})});const d=await r.json().catch(()=>null);if(!r.ok||!d?.iceServers)return res.status(502).json({error:'TURN credentials unavailable'});res.json({iceServers:d.iceServers,turnConfigured:true})}catch(e){res.status(500).json({error:'TURN error'})}});
+app.get('/api/calls/config',async(req,res)=>{try{if(!TURN_KEY_ID||!TURN_KEY_API_TOKEN)return res.json({iceServers:[{urls:'stun:stun.cloudflare.com:3478'},{urls:'stun:stun.l.google.com:19302'}],turnConfigured:false});const r=await fetch('https://rtc.live.cloudflare.com/v1/turn/keys/'+encodeURIComponent(TURN_KEY_ID)+'/credentials/generate-ice-servers',{method:'POST',headers:{'Authorization':'Bearer '+TURN_KEY_API_TOKEN,'Content-Type':'application/json'},body:JSON.stringify({ttl:86400})});const d=await r.json().catch(()=>null);if(!r.ok||!d?.iceServers)return res.status(502).json({error:'TURN credentials unavailable'});res.json({iceServers:d.iceServers,turnConfigured:true})}catch(e){res.status(500).json({error:'TURN error'})}});
 
 app.use(express.json({limit:'12mb'}));
 app.use((req,res,next)=>{
