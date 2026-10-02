@@ -725,7 +725,7 @@ async function secretBotHook(p){
  if(p.type!=='text')return botSayTo(SECRETBOT.id,'🎁 Чтобы отправить анонимный подарок, сначала напиши @username получателя.');
  try{const r=await fetch('/api/secretbot/message',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({userId:me.id,text:p.text||''})});const x=await r.json().catch(()=>({}));if(!r.ok)await botSayTo(SECRETBOT.id,'❌ '+(x.error||'SecretBot временно недоступен.'));}catch(e){await botSayTo(SECRETBOT.id,'❌ Не удалось связаться с SecretBot. Попробуй ещё раз.')}}
 async function secretBotGift(gift,nosell){try{const r=await fetch('/api/secretbot/gift',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({userId:me.id,gift,nosell:!!nosell})});const x=await r.json().catch(()=>({}));if(!r.ok){alert(x.error||'Не удалось отправить анонимный подарок');return false}return true}catch(e){alert('Не удалось связаться с SecretBot');return false}}
-function botNewHook(p){
+async function botNewHook(p){
  if(p.type!=='text')return botSayTo(BOTNEW.id,'Пока что BotNew принимает только текстовые команды. Напишите «новыйбот».');
  try{
    const r=await fetch('/api/botnew/message',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({userId:me.id,text:p.text||''})});
