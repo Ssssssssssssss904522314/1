@@ -80,7 +80,7 @@ input.t:focus,textarea.t:focus,select.t:focus,.bar input:focus{border-color:var(
 .bar .pr{border-radius:50%;width:40px;height:40px;padding:0;display:inline-flex;align-items:center;justify-content:center}
 label.ib{display:inline-flex;align-items:center;justify-content:center;user-select:none}
 .nav{position:relative;margin:4px 14px calc(10px);padding:4px;border:1px solid var(--th);background:var(--card);border-radius:26px;box-shadow:var(--sh)}
-.nav .pill{position:absolute;top:4px;bottom:4px;left:4px;width:calc((100% - 8px)/3);border-radius:20px;background:linear-gradient(135deg,rgba(91,124,255,.16),rgba(123,92,255,.16));pointer-events:none}
+.nav .pill{position:absolute;top:4px;bottom:4px;left:4px;width:calc((100% - 8px)/4);border-radius:20px;background:linear-gradient(135deg,rgba(91,124,255,.16),rgba(123,92,255,.16));pointer-events:none}
 .nav button{position:relative;z-index:1;border-radius:20px;padding:7px 4px;font-weight:600;transition:color .25s}
 .nav button div{transition:transform .3s cubic-bezier(.3,1.4,.5,1)}
 .nav .on div{transform:translateY(-1px) scale(1.18)}
@@ -422,11 +422,11 @@ document.addEventListener('click',e=>{const o=e.target.closest&&e.target.closest
 document.addEventListener('click',e=>{const t=e.target.closest&&e.target.closest('.pst[data-u]');if(t){e.stopPropagation();e.preventDefault();if(t.dataset.pid&&me&&t.dataset.pid===me.id)premiumEmojiPicker();else premModal(t.dataset.u)}},true);
 const GIFTS=[{k:'bear',n:'Мишка',e:'🧸',p:15},{k:'tree',n:'Ёлка',e:'🎄',p:35},{k:'heart',n:'Сердце',e:'❤️',p:50},{k:'ring',n:'Кольцо',e:'💍',p:190}];
 const gh=m=>{const g=GIFTS.find(x=>x.k===m.gift);return g?`<div class="c" style="font-size:44px">${gi(g,64)}</div><div class="c">Подарок: ${esc(g.n)}${m.sold?' (продан)':''}</div><button class="ib" data-v="${m.id}" style="margin-top:6px;width:100%">Посмотреть</button>`:'🎁'};
-const nav=a=>`<div class="nav"><span class="pill"></span>${[['settings','⚙️','Настройки'],['chats','💬','Чаты'],['profile','👤','Профиль']].map(([k,i,t])=>`<button data-n="${k}" class="${a===k?'on':''}"><div>${i}</div>${t}</button>`).join('')}</div>`;
-let lastTab;const bindNav=()=>{const on=document.querySelector('.nav .on'),ord=['settings','chats','profile'],cur=ord.indexOf(on&&on.dataset.n),b=$('.body'),pl=$('.nav .pill');
+const nav=a=>`<div class="nav"><span class="pill"></span>${[['settings','⚙️','Настройки'],['chats','💬','Чаты'],['ecoton','💎','ECOTon'],['profile','👤','Профиль']].map(([k,i,t])=>`<button data-n="${k}" class="${a===k?'on':''}"><div>${i}</div>${t}</button>`).join('')}</div>`;
+let lastTab;const bindNav=()=>{const on=document.querySelector('.nav .on'),ord=['settings','chats','ecoton','profile'],cur=ord.indexOf(on&&on.dataset.n),b=$('.body'),pl=$('.nav .pill');
  if(b){b.classList.remove('sl','sr');if(lastTab!==undefined&&cur!==lastTab&&cur>=0)b.classList.add(cur>lastTab?'sr':'sl')}
  if(pl&&cur>=0){pl.style.transition='none';pl.style.transform='translateX('+(lastTab===undefined?cur:lastTab)*100+'%)';void pl.offsetWidth;pl.style.transition='transform .38s cubic-bezier(.25,1.2,.4,1)';pl.style.transform='translateX('+cur*100+'%)'}
- lastTab=cur;document.querySelectorAll('[data-n]').forEach(x=>x.onclick=()=>({chats:home,profile:profile,settings:settings}[x.dataset.n])())};
+ lastTab=cur;document.querySelectorAll('[data-n]').forEach(x=>x.onclick=()=>({chats:home,profile:profile,settings:settings,ecoton:ecoton}[x.dataset.n])())};
 
 const cid=(a,b)=>[a,b].sort().join('_');
 const SECRET_STORE='EKOOOL_SECRET_KEYS_V1';
@@ -816,6 +816,25 @@ async function addCoins(id,amt,note){const s=await db.doc('users/'+id).get();if(
 async function delAcc(id){const us=await db.doc('users/'+id).get();if(us.exists){const d=us.data();for(const x of[d.username,...(d.extra||[])])if(x)await db.doc('usernames/'+x).delete();for(const ph of[d.phone,d.phone2])if(ph)await db.doc('numbers/'+ph.replace(/\D/g,'')).delete()}
  for(const f of['a','b']){const r=await db.collection('msgs').where(f,'==',id).get();for(const d of r.docs)await db.doc('msgs/'+d.id).delete()}
  const t=await db.collection('txs').where('uid','==',id).get();for(const d of t.docs)await db.doc('txs/'+d.id).delete();await db.doc('users/'+id).delete();cache={}}
+async function ecoton(){clean();await fresh();
+ app.innerHTML=`<div class="top">${acctButton()}<h1>💎 ECOTon</h1></div><div class="body">
+ <div class="glass" style="padding:18px;border-radius:24px;margin-bottom:12px;text-align:center">
+  <div class="note">Ваш баланс</div><div style="font-size:42px;font-weight:900;margin:4px 0">💎 <span id="ecoBalance">${Number(me.ecoton||0).toLocaleString('ru-RU')}</span></div>
+  <div class="note">500 ЭКОкоинов = 1 ECOTon</div>
+  <div style="display:flex;gap:8px;margin-top:14px"><button class="ib" id="ecoBuy" style="flex:1">🛒 Купить</button><button class="ib" id="ecoSell" style="flex:1">💰 Продать</button></div>
+ </div>
+ <div style="display:flex;justify-content:space-between;align-items:center;margin:14px 2px 8px"><b>📜 Транзакции</b><button class="ib" id="ecoRefresh">↻</button></div>
+ <div id="ecoTx"><div class="note c">Загрузка…</div></div>
+ </div>${nav('ecoton')}`;
+ bindNav();document.querySelector("#acctBtn").onclick=accountSwitcher;
+ const load=async()=>{try{
+   const [bal,tx]=await Promise.all([fetch('/api/store/me',{credentials:'include'}).then(r=>r.json()),fetch('/api/store/transactions',{credentials:'include'}).then(r=>r.json())]);
+   if(bal.user){me.ecoton=Number(bal.user.ecoton||0);me.coins=Number(bal.user.coins||0);$('#ecoBalance').textContent=me.ecoton.toLocaleString('ru-RU')}
+   const rows=tx.transactions||[];
+   $('#ecoTx').innerHTML=rows.length?rows.map(x=>{const n=Number(x.ecoton||0),positive=n>0;let label=x.type==='exchange'?'Обмен ЭКОкоинов':x.type==='sale'?'Продажа товара':x.type==='purchase'?'Покупка товара':x.type==='admin'?'Изменение администратором':String(x.type||'Транзакция');return `<div class="row" style="cursor:default;margin-bottom:7px"><div style="flex:1"><b>${esc(label)}</b><div class="note">${new Date(Number(x.ts||Date.now())).toLocaleString('ru-RU')}</div></div><div style="font-weight:900;color:${positive?'#19a463':'#e04b59'}">${positive?'+':''}${n.toLocaleString('ru-RU')} 💎</div></div>`}).join(''):'<div class="note c">Транзакций пока нет.</div>';
+ }catch(e){$('#ecoTx').innerHTML='<div class="note c">Не удалось загрузить историю.</div>'}};
+ $('#ecoRefresh').onclick=load;$('#ecoBuy').onclick=()=>window.open('https://market-ekoool.onrender.com','_blank');$('#ecoSell').onclick=()=>window.open('https://market-ekoool.onrender.com/#sell','_blank');await load();
+}
 async function profile(){clean();await fresh();
  app.innerHTML=`<div class="top">${acctButton()}<h1>Профиль</h1></div><div class="body">${card(me)}<div id="qr"></div><div class="note c">Так вас видят другие пользователи. QR-код содержит ваш юзернейм.</div></div>${nav('profile')}`;
  bindNav();document.querySelector("#acctBtn").onclick=accountSwitcher;showGifts(me.id);try{new QRCode($('#qr'),{text:handle(me),width:160,height:160})}catch(e){}}
