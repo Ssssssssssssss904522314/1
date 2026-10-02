@@ -597,6 +597,20 @@ async function marketOrderAccess(req,orderId){
   const ok=String(o.uid)===String(u.id)||String(o.sellerId||'')===String(u.id);
   return {u,o,ok};
 }
+app.post('/api/store/dispute/:orderId',async(req,res)=>{
+  try{
+    const {u,o,ok}=await marketOrderAccess(req,String(req.params.orderId));
+    if(!u)return res.status(401).json({error:'Войдите в EKOOOL'});
+    if(!ok||String(o.uid)!==String(u.id))return res.status(403).json({error:'Только покупатель может открыть спор'});
+    if(o.deliveryType!=='manual')return res.status(400).json({error:'Спор доступен только для ручной выдачи'});
+    if(['refunded','completed'].includes(String(o.status)))return res.status(400).json({error:'По этому заказу спор уже закрыт'});
+    const reason=String(req.body?.reason||'Продавец отказался принять/выдать товар').trim().slice(0,1000);
+    await patchDoc('store_orders',String(o.id),{status:'dispute',disputeReason:reason,disputeAt:Date.now(),disputeBy:String(u.id)});
+    const id='chat_'+Date.now()+'_'+crypto.randomBytes(4).toString('hex');
+    await putDoc('store_chats',id,{orderId:String(o.id),fromId:String(u.id),fromUsername:String(u.username||''),text:'⚠️ Открыт спор: '+reason,system:true,ts:Date.now()});
+    res.json({ok:true,status:'dispute',message:'Спор открыт. ECOTon удерживаются до рассмотрения.'});
+  }catch(e){res.status(500).json({error:e.message||'Не удалось открыть спор'})}
+});
 app.get('/api/store/chat/:orderId',async(req,res)=>{
   try{
     const {u,o,ok}=await marketOrderAccess(req,String(req.params.orderId));
