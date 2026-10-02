@@ -435,8 +435,42 @@ app.post('/api/store/exchange',async(req,res)=>{
     const u=await storeUser(req); if(!u)return res.status(401).json({error:'Войдите в EKOOOL'});
     const coins=Math.floor(Number(req.body?.coins));
     if(!Number.isFinite(coins)||coins<ECOTON_RATE||coins%ECOTON_RATE!==0)return res.status(400).json({error:'Обмен только кратно 500 ЭКОкоинов'});
-    const add=coins/ECOTON_RATE; let next;
-    if(pool){const client=await pool.connect();try{await client.query('BEGIN');const r=await client.query('SELECT data FROM ekoool_kv WHERE collection=$1 AND id=$2 FOR UPDATE',['users',String(u.id)]);const fresh=r.rows[0]?.data;if(!fresh)throw new Error('Аккаунт не найден');const current=Number(fresh.coins||0);if(current<coins)throw new Error('Недостаточно ЭКОкоинов');next={...fresh,coins:current-coins,ecoton:Number(fresh.ecoton||0)+add};await client.query('UPDATE ekoool_kv SET data=$3 WHERE collection=$1 AND id=$2',['users',String(u.id),JSON.stringify(next)]);await client.query('INSERT INTO ekoool_kv(collection,id,data) VALUES($1,$2,$3)',['ecoton_txs','ex_'+Date.now()+'_'+crypto.randomBytes(3).toString('hex'),JSON.stringify({uid:u.id,coins:-coins,ecoton:add,type:'exchange',ts:Date.now(),rate:ECOTON_RATE})]);await client.query('COMMIT')}catch(e){await client.query('ROLLBACK');throw e}finally{client.release()}}else{const current=Number(u.coins||0);if(current<coins)throw new Error('Недостаточно ЭКОкоинов');next={...u,coins:current-coins,ecoton:Number(u.ecoton||0)+add};await patchDoc('users',u.id,{coins:next.coins,ecoton:next.ecoton});await putDoc('ecoton_txs','ex_'+Date.now()+'_'+crypto.randomBytes(3).toString('hex'),{uid:u.id,coins:-coins,ecoton:add,type:'exchange',ts:Date.now(),rate:ECOTON_RATE})}
+    const add=coins/ECOTON_RATE;
+    const ownerMap=await getDoc('usernames','owner');
+    const ownerId=String(ownerMap?.uid||'');
+    if(!ownerId)return res.status(503).json({error:'Аккаунт @owner не найден. Обмен временно недоступен.'});
+    if(ownerId===String(u.id))return res.status(400).json({error:'@owner не может обменивать коины сам себе'});
+    let next;
+    if(pool){
+      const client=await pool.connect();
+      try{
+        await client.query('BEGIN');
+        const ids=[String(u.id),ownerId].sort();
+        const rs=await client.query('SELECT id,data FROM ekoool_kv WHERE collection=$1 AND id=ANY($2::text[]) FOR UPDATE',['users',ids]);
+        const rows=new Map(rs.rows.map(x=>[String(x.id),x.data]));
+        const fresh=rows.get(String(u.id)),owner=rows.get(ownerId);
+        if(!fresh)throw new Error('Аккаунт не найден');
+        if(!owner)throw new Error('Аккаунт @owner не найден');
+        const current=Number(fresh.coins||0);
+        if(current<coins)throw new Error('Недостаточно ЭКОкоинов');
+        next={...fresh,coins:current-coins,ecoton:Number(fresh.ecoton||0)+add};
+        const ownerNext={...owner,coins:Number(owner.coins||0)+coins};
+        await client.query('UPDATE ekoool_kv SET data=$3 WHERE collection=$1 AND id=$2',['users',String(u.id),JSON.stringify(next)]);
+        await client.query('UPDATE ekoool_kv SET data=$3 WHERE collection=$1 AND id=$2',['users',ownerId,JSON.stringify(ownerNext)]);
+        const txid='ex_'+Date.now()+'_'+crypto.randomBytes(3).toString('hex');
+        await client.query('INSERT INTO ekoool_kv(collection,id,data) VALUES($1,$2,$3)',['ecoton_txs',txid,JSON.stringify({uid:u.id,ownerId,coins:-coins,ownerCoins:coins,ecoton:add,type:'exchange',ts:Date.now(),rate:ECOTON_RATE})]);
+        await client.query('COMMIT');
+      }catch(e){await client.query('ROLLBACK');throw e}finally{client.release()}
+    }else{
+      const current=Number(u.coins||0);
+      if(current<coins)throw new Error('Недостаточно ЭКОкоинов');
+      const owner=await getDoc('users',ownerId);
+      if(!owner)throw new Error('Аккаунт @owner не найден');
+      next={...u,coins:current-coins,ecoton:Number(u.ecoton||0)+add};
+      await patchDoc('users',u.id,{coins:next.coins,ecoton:next.ecoton});
+      await patchDoc('users',ownerId,{coins:Number(owner.coins||0)+coins});
+      await putDoc('ecoton_txs','ex_'+Date.now()+'_'+crypto.randomBytes(3).toString('hex'),{uid:u.id,ownerId,coins:-coins,ownerCoins:coins,ecoton:add,type:'exchange',ts:Date.now(),rate:ECOTON_RATE});
+    }
     res.json({ok:true,user:storePublicUser({...u,...next}),message:'Обмен выполнен'});
   }catch(e){res.status(400).json({error:e.message||'Не удалось выполнить обмен'})}
 });
