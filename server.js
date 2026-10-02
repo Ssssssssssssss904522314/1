@@ -558,6 +558,37 @@ app.post('/api/store/buy',async(req,res)=>{
     res.json({ok:true,orderId:order.id,remaining,delivery,deliveryType:order.deliveryType,sellerUsername:order.sellerUsername,message:'Покупка оформлена. Заказ #'+order.id});
   }catch(e){res.status(400).json({error:e.message||'Не удалось оформить покупку'})}
 });
+async function marketTrust(sellerId){
+  const sid=String(sellerId||'').trim();
+  if(!sid)return {badge:'none',bad30:0,total:0};
+  const cutoff=Date.now()-30*24*60*60*1000;
+  const rows=(await getCollection('store_reviews')).map(x=>({id:x.id,...x.data})).filter(x=>String(x.sellerId||'')===sid);
+  const recent=rows.filter(x=>Number(x.createdAt||0)>=cutoff);
+  const bad30=recent.filter(x=>x.bad===true).length;
+  const total=rows.length;
+  return {badge:bad30>40?'warn':bad30===0?'check':'none',bad30,total};
+}
+app.get('/api/store/trust/:id',async(req,res)=>{
+  try{const id=String(req.params.id||'').trim();const u=await getDoc('users',id);if(!u)return res.status(404).json({error:'Пользователь не найден'});res.json({ok:true,userId:id,...await marketTrust(id)})}
+  catch(e){res.status(500).json({error:e.message||'Не удалось получить статус продавца'})}
+});
+app.post('/api/store/review',async(req,res)=>{
+  try{
+    const buyer=await storeAuth(req);if(!buyer)return res.status(401).json({error:'Войдите в EKOOOL'});
+    const orderId=String(req.body?.orderId||'').trim(),bad=!!req.body?.bad,comment=String(req.body?.comment||'').trim().slice(0,1000);
+    if(!orderId)return res.status(400).json({error:'Не указан заказ'});
+    const order=await getDoc('store_orders',orderId);
+    if(!order||String(order.uid)!==String(buyer.id))return res.status(404).json({error:'Заказ не найден'});
+    const sellerId=String(order.sellerId||'');if(!sellerId)return res.status(400).json({error:'У этого заказа нет продавца'});
+    if(sellerId===String(buyer.id))return res.status(400).json({error:'Нельзя оставить отзыв самому себе'});
+    const exists=await getCollection('store_reviews');if(exists.some(x=>String(x.data?.orderId||'')===orderId))return res.status(409).json({error:'Отзыв по этому заказу уже оставлен'});
+    const id='review_'+Date.now()+'_'+crypto.randomBytes(4).toString('hex');
+    await putDoc('store_reviews',id,{orderId,buyerId:String(buyer.id),sellerId,productId:String(order.productId||''),bad,comment,createdAt:Date.now()});
+    const trust=await marketTrust(sellerId);
+    await patchDoc('users',sellerId,{marketSeller:true,marketTrustBadge:trust.badge,marketBadReviews30:trust.bad30,marketTrustUpdatedAt:Date.now()});
+    res.json({ok:true,reviewId:id,...trust});
+  }catch(e){res.status(500).json({error:e.message||'Не удалось сохранить отзыв'})}
+});
 app.post('/api/store/sell',async(req,res)=>{
   try{
     const u=await storeUser(req);if(!u)return res.status(401).json({error:'Войдите в EKOOOL'});
@@ -576,6 +607,7 @@ app.post('/api/store/sell',async(req,res)=>{
     if(!delivery)return res.status(400).json({error:'Укажите данные, которые покупатель получит после оплаты'});
     const id='userprod_'+Date.now()+'_'+crypto.randomBytes(4).toString('hex');
     await putDoc('store_products',id,{name,type,description,image,deliveryType:'instant',delivery,price,stock,active:true,sellerId:String(u.id),sellerUsername:String(u.username||''),createdAt:Date.now()});
+    if(!u.marketSeller)await patchDoc('users',String(u.id),{marketSeller:true,marketTrustBadge:(u.marketTrustBadge||'check'),marketBadReviews30:Number(u.marketBadReviews30||0),marketTrustUpdatedAt:Date.now()});
     res.json({ok:true,id});
   }catch(e){res.status(500).json({error:e.message||'Не удалось выставить товар'})}
 });
