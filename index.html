@@ -456,7 +456,9 @@ async function secretModal(oid,onDone){
 
 /* ---- EKOOOL WebRTC calls ---- */
 let activeCall=null,callGlobalUnsub=null;
-const CALL_ICE={iceServers:[{urls:'stun:stun.l.google.com:19302'}]};
+const CALL_ICE_FALLBACK={iceServers:[{urls:'stun:stun.l.google.com:19302'}]};
+let CALL_ICE=null;
+async function loadCallIce(){if(CALL_ICE)return CALL_ICE;try{const r=await api('/api/calls/config');const d=await r.json();if(r.ok&&Array.isArray(d.iceServers)&&d.iceServers.length){CALL_ICE={iceServers:d.iceServers};return CALL_ICE}}catch(e){}CALL_ICE=CALL_ICE_FALLBACK;return CALL_ICE}
 function callId(){return 'call_'+Date.now().toString(36)+'_'+Math.random().toString(36).slice(2,9)}
 function callDocId(id){return 'calls/'+id}
 function callCandidateId(id){return 'cc_'+id+'_'+me.id+'_'+Date.now().toString(36)+'_'+Math.random().toString(36).slice(2,7)}
@@ -498,7 +500,8 @@ function bindCallControls(a){
 }
 async function getCallMedia(kind){if(!navigator.mediaDevices?.getUserMedia)throw new Error('Камера и микрофон доступны только по HTTPS.');return navigator.mediaDevices.getUserMedia(kind==='video'?{audio:true,video:{facingMode:'user',width:{ideal:1280},height:{ideal:720}}}:{audio:true,video:false})}
 async function startCall(oid,kind){
-  if(activeCall)return alert('У вас уже есть активный звонок.');const o=await getUser(oid);if(!o)return alert('Пользователь не найден.');let stream;
+  if(activeCall)return alert('У вас уже есть активный звонок.');
+  await loadCallIce();const o=await getUser(oid);if(!o)return alert('Пользователь не найден.');let stream;
   try{stream=await getCallMedia(kind)}catch(e){return alert('Не удалось включить '+(kind==='video'?'камеру и микрофон':'микрофон')+'. Разрешите доступ в браузере и попробуйте ещё раз.')}
   const id=callId(),a=activeCall={id,other:oid,kind,pc:null,localStream:stream,remoteStream:null,incoming:false,seenCandidates:new Set(),pendingCandidates:[]};
   callOverlay({name:o.name||o.username||'Пользователь',kind,statusText:'Вызов…'});if(kind==='video'){const v=document.getElementById('ekoLocalVideo');if(v){v.srcObject=stream;v.play?.().catch(()=>{})}}
@@ -510,7 +513,8 @@ async function startCall(oid,kind){
   }catch(e){alert('Не удалось начать звонок: '+(e.message||e));await finishCall('failed')}
 }
 async function acceptCall(data){
-  if(activeCall)return;const o=await getUser(data.a)||{name:'Пользователь'};let stream;
+  if(activeCall)return;
+  await loadCallIce();const o=await getUser(data.a)||{name:'Пользователь'};let stream;
   try{stream=await getCallMedia(data.kind)}catch(e){try{await db.doc(callDocId(data.id)).update({status:'ended',endedAt:Date.now()})}catch(_){};return alert('Нужен доступ к '+(data.kind==='video'?'камере и микрофону':'микрофону')+'. Разрешите его в браузере.')}
   const a=activeCall={id:data.id,other:data.a,kind:data.kind,pc:null,localStream:stream,remoteStream:null,incoming:true,seenCandidates:new Set(),pendingCandidates:[]};
   callOverlay({name:o.name||o.username||'Пользователь',kind:data.kind});if(data.kind==='video'){const v=document.getElementById('ekoLocalVideo');if(v){v.srcObject=stream;v.play?.().catch(()=>{})}}
