@@ -49,5 +49,6 @@ services:
   - type: web
     name: market-ekoool
     runtime: static
+    rootDir: market
     buildCommand: ""
-    staticPublishPath: ./market
+    staticPublishPath: ./
