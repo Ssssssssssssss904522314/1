@@ -18,6 +18,8 @@ const TELEGRAM_COINS_WEBHOOK_URL=process.env.TELEGRAM_COINS_WEBHOOK_URL||'https:
 const TELEGRAM_MARKET_BOT_TOKEN=process.env.TELEGRAM_MARKET_BOT_TOKEN||'';
 const TELEGRAM_MARKET_WEBHOOK_SECRET=process.env.TELEGRAM_MARKET_WEBHOOK_SECRET||'';
 const TELEGRAM_MARKET_WEBHOOK_URL=process.env.TELEGRAM_MARKET_WEBHOOK_URL||'https://ekool-server.onrender.com/api/telegram/market-webhook';
+const TURN_KEY_ID=process.env.TURN_KEY_ID||'';
+const TURN_KEY_API_TOKEN=process.env.TURN_KEY_API_TOKEN||'';
 
 const DONATE_URL=process.env.DONATE_URL||'https://ekool-site.onrender.com/';
 const TELEGRAM_ADMIN_IDS=String(process.env.TELEGRAM_ADMIN_IDS||'').split(',').map(x=>x.trim()).filter(Boolean);
@@ -209,6 +211,8 @@ function adminLoginAllowed(ip){
   if(a.n>=10)return false;
   a.n++;loginAttempts.set(ip,a);return true;
 }
+
+app.get('/api/calls/turn-credentials',async(req,res)=>{try{if(!TURN_KEY_ID||!TURN_KEY_API_TOKEN)return res.json({iceServers:[{urls:'stun:stun.cloudflare.com:3478'},{urls:'stun:stun.l.google.com:19302'}],turnConfigured:false});const r=await fetch('https://rtc.live.cloudflare.com/v1/turn/keys/'+encodeURIComponent(TURN_KEY_ID)+'/credentials/generate-ice-servers',{method:'POST',headers:{'Authorization':'Bearer '+TURN_KEY_API_TOKEN,'Content-Type':'application/json'},body:JSON.stringify({ttl:86400})});const d=await r.json().catch(()=>null);if(!r.ok||!d?.iceServers)return res.status(502).json({error:'TURN credentials unavailable'});res.json({iceServers:d.iceServers,turnConfigured:true})}catch(e){res.status(500).json({error:'TURN error'})}});
 
 app.use(express.json({limit:'12mb'}));
 app.use((req,res,next)=>{
