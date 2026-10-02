@@ -316,7 +316,7 @@ function auth(mode='in',add){
  app.innerHTML=`<div class="body c" style="padding-top:${add?'4vh':'12vh'}">${add?'<div style="text-align:left"><button class="ib" id="bk">← Назад</button></div>':''}<h1 style="font-size:34px;margin:0;color:var(--pr)">EKOOOL</h1><p style="color:var(--mut)">${add?'Добавить аккаунт':'Мессенджер'}</p>
  ${reg?'<input class="t" id="nm" placeholder="Ваше имя"><input class="t" id="un" placeholder="Юзернейм (английские буквы)">':'<input class="t" id="id" placeholder="Юзернейм или номер (+888…)">'}
  <input class="t" id="pw" type="password" placeholder="Пароль (от 6 символов)">
- <input class="t" id="tfa" type="password" inputmode="text" autocomplete="one-time-code" placeholder="2FA-код из Telegram-бота" style="display:none">
+ <input class="t" id="tfa" type="password" inputmode="text" autocomplete="one-time-code" placeholder="Код из Telegram-бота (5 цифр)" style="display:none">
  <div class="err" id="er"></div>
  <button class="pr" style="width:100%" id="go">${reg?'Создать аккаунт':'Войти'}</button><p><a href="#" id="sw" style="color:var(--pr)">${reg?'Уже есть аккаунт? Войти':'Нет аккаунта? Регистрация'}</a></p>
  ${isAdmin?'<p><a href="#" id="adl" style="color:var(--mut)">Админ-панель</a></p>':''}<div class="note">${reg?'Регистрация без электронной почты. Нужны только имя, юзернейм и пароль.':'Юзернейм — ваш публичный адрес. Для входа нужны юзернейм и пароль.'}</div></div>`;
@@ -327,21 +327,16 @@ function auth(mode='in',add){
    if(pw.length<6)return er.textContent='Пароль: минимум 6 символов';
    if(!reg){
      try{
-       const login=$('#id').value.trim(),twoFA=$('#tfa').value.trim();
-       const rr=await fetch('/api/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},credentials:'include',body:JSON.stringify({username:login,password:pw,twoFA})});
+       const login=$('#id').value.trim(),loginCode=$('#tfa').value.trim();
+       const rr=await fetch('/api/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},credentials:'include',body:JSON.stringify({username:login,password:pw,loginCode})});
        const xx=await rr.json().catch(()=>({}));
        if(!rr.ok){
-         if(xx.code==='twofa_required'||xx.requires2FA){
+         if(xx.code==='login_code_required'||xx.code==='login_code_expired'||xx.code==='invalid_login_code'||xx.requiresCode){
            $('#tfa').style.display='block';
            $('#tfa').focus();
-           $('#go').textContent='Подтвердить 2FA';
-           er.textContent='🔐 Этот покупной аккаунт требует 2FA-код из Telegram-бота.';
+           $('#go').textContent='Ввести код';
+           er.textContent=xx.code==='invalid_login_code'?'❌ Неверный код.':'📨 Код из Telegram-бота отправлен. Введите его сюда.';
            return;
-         }
-         if(xx.code==='invalid_2fa'){
-           $('#tfa').style.display='block';
-           $('#go').textContent='Подтвердить 2FA';
-           return er.textContent='❌ Неверный 2FA-код.';
          }
          return er.textContent=xx.error||'Неверный юзернейм или пароль';
        }
