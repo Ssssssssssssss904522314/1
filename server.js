@@ -227,7 +227,7 @@ function uniqueGiftPublic(g){
 app.post('/api/unique-gifts/create',async(req,res)=>{
   try{
     const u=await userAuth(req);if(!u)return res.status(401).json({error:'Unauthorized'});
-    const recipientId=String(req.body?.recipientId||'').trim();
+    const recipientId=String(req.body?.recipientId||req.body?.toId||req.body?.recipient||req.headers['x-ekooool-recipient']||'').trim();
     if(!recipientId)return res.status(400).json({error:'Получатель не указан'});
     if(recipientId===u.id)return res.status(400).json({error:'Нельзя подарить уникальный подарок себе'});
     const recipient=await getDoc('users',recipientId);
