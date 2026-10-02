@@ -1272,13 +1272,13 @@ async function tgPersonalRating(chatId,orderId,rating){
 }
 
 async function tgBuyAccountInfo(chatId){
-  return tg('sendMessage',{chat_id:chatId,text:'🛒 Покупка аккаунта EKOOOL\n\nТут ты можешь купить сразу аккаунт с Premium и красной верификацией. Достаточно нажать кнопку «Купить», оплатить — и всё готово!\n\n🎁 В комплекте:\n👑 Premium на 3 месяца\n🔴 Красная верификация\n🔐 2FA\n⚡ Автоматическое создание аккаунта после оплаты.',reply_markup:{inline_keyboard:[
+  return tg('sendMessage',{chat_id:chatId,text:'🛒 Покупка аккаунта EKOOOL\n\nТут ты можешь купить сразу аккаунт с Premium и красной верификацией. Достаточно нажать кнопку «Купить», оплатить — и всё готово!\n\n🎁 В комплекте:\n👑 Premium на 3 месяца\n🔴 Красная верификация\n🔐 Код входа приходит в этот Telegram-бот\n⚡ Автоматическое создание аккаунта после оплаты.',reply_markup:{inline_keyboard:[
     [{text:'⭐ Купить за 50 звёзд',callback_data:'buy_account_pay'}],
     [{text:'⬅️ Назад',callback_data:'menu'}]
   ]}});
 }
 async function tgBuyAccountInvoice(chatId){
-  return tg('sendInvoice',{chat_id:chatId,title:'Аккаунт EKOOOL',description:'Аккаунт EKOOOL с Premium на 3 месяца, красной верификацией и 2FA',payload:'ekoool_account_50_'+Date.now(),currency:'XTR',prices:[{label:'Аккаунт EKOOOL',amount:50}]});
+  return tg('sendInvoice',{chat_id:chatId,title:'Аккаунт EKOOOL',description:'Аккаунт EKOOOL с Premium на 3 месяца, красной верификацией и кодом входа из Telegram',payload:'ekoool_account_50_'+Date.now(),currency:'XTR',prices:[{label:'Аккаунт EKOOOL',amount:50}]});
 }
 async function tgCreatePurchasedAccount(chatId,userId){
   const password=process.env.PURCHASE_ACCOUNT_PASSWORD||'';
@@ -1290,11 +1290,10 @@ async function tgCreatePurchasedAccount(chatId,userId){
   if(username.length<8)username='ekoool_'+crypto.randomBytes(4).toString('hex');
   if(await getDoc('usernames',username))username='ekoool_'+crypto.randomBytes(5).toString('hex');
   const now=Date.now();
-  const twoFA=tgRandomTwoFA();
-  const user={name:'EKOOOL Premium',photo:'',bio:'Покупной аккаунт EKOOOL',verified:false,red:true,purchased:true,premiumUntil:now+90*24*60*60*1000,premiumStart:now,coins:1000,username,extra:[],salt,passHash,twoFAHash:twoFAHash(twoFA),twoFAChatId:String(chatId),twoFAIssuedAt:now,lastSeen:now,ts:now};
+  const user={name:'EKOOOL Premium',photo:'',bio:'Покупной аккаунт EKOOOL',verified:false,red:true,purchased:true,premiumUntil:now+90*24*60*60*1000,premiumStart:now,coins:1000,username,extra:[],salt,passHash,telegramChatId:String(chatId),telegramLinkedAt:now,lastSeen:now,ts:now};
   await putDoc('users',id,user);
   await putDoc('usernames',username,{uid:id});
-  return tg('sendMessage',{chat_id:chatId,text:'✅ АККАУНТ УСПЕШНО СОЗДАН!\n\n👤 Юзернейм: @'+username+'\n🔐 Пароль: '+password+'\n🔑 2FA: '+twoFA+'\n👑 Premium: 3 месяца\n🔴 Красная верификация: включена\n\n⚠️ Сохраните данные для входа.',reply_markup:tgKeyboard()});
+  return tg('sendMessage',{chat_id:chatId,text:'✅ АККАУНТ УСПЕШНО СОЗДАН!\n\n👤 Юзернейм: @'+username+'\n🔐 Пароль: '+password+'\n👑 Premium: 3 месяца\n🔐 При входе код придёт в этот Telegram-бот.\n🔴 Красная верификация: включена\n\n⚠️ Сохраните данные для входа.',reply_markup:tgKeyboard()});
 }
 // Free purchased-account test command. This simulates a completed 50-Star purchase.
 async function tgFreePurchasedAccount(chatId,userId){
