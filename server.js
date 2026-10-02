@@ -191,6 +191,10 @@ async function canWriteDoc(req,c,id,body){
     const old=await getDoc(c,id);const d=body&&Object.keys(body).length?{...(old||{}),...body}:old;
     return !!d&&(d.a===u.id||d.b===u.id||d.uid===u.id);
   }
+  if(c==='calls'||c==='callCandidates'){
+    const old=await getDoc(c,id);const d=body&&Object.keys(body).length?{...(old||{}),...body}:old;
+    return !!d&&d.a===u.id||!!d&&d.b===u.id;
+  }
   if(c==='txs')return !body?.uid||body.uid===u.id;
   if(c==='groups'){
     const old=await getDoc(c,id);const d={...(old||{}),...(body||{})};
@@ -697,7 +701,7 @@ app.get('/api/store/orders',async(req,res)=>{
 app.get('/api/doc/:collection/:id',async(req,res)=>{
   try{
     const c=req.params.collection,id=req.params.id;let data=await getDoc(c,id);
-    if(['msgs','gmsgs','gm','txs'].includes(c)&&!isAdmin(req)){
+    if(['msgs','gmsgs','gm','txs','calls','callCandidates'].includes(c)&&!isAdmin(req)){
       const u=await userAuth(req);if(!u)return res.status(401).json({error:'Unauthorized'});
       if(data&&(data.a!==u.id&&data.b!==u.id&&data.uid!==u.id))return res.status(403).json({error:'Forbidden'});
     }
@@ -735,7 +739,7 @@ app.get('/api/collection/:collection',async(req,res)=>{
     const ops=Array.isArray(req.query.op)?req.query.op:[req.query.op||'=='];
     const vals=Array.isArray(req.query.value)?req.query.value:[req.query.value];
     const parsed=ws.map((k,i)=>{let want=vals[i];try{want=JSON.parse(want)}catch(e){}return {key:String(k),op:ops[i]||'==',value:want};}).filter(x=>x.key);
-    const restricted=['msgs','gmsgs','gm','txs'].includes(c);
+    const restricted=['msgs','gmsgs','gm','txs','calls','callCandidates'].includes(c);
     const u=restricted?await userAuth(req):null;
     if(restricted&&!u&&!isAdmin(req))return res.status(401).json({error:'Unauthorized'});
     let docs;
