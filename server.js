@@ -343,7 +343,21 @@ app.post('/api/auth/login',async(req,res)=>{
     if(hash!==u.passHash)return res.status(401).json({error:'Неверный юзернейм/номер или пароль'});
     const purchased=isPurchasedAccount(u);
     if(purchased){
-      if(!twoFA){if(!u.twoFAHash&&u.twoFA)await patchDoc('users',uid,{twoFAHash:twoFAHash(u.twoFA)});return res.status(401).json({error:'Для этого покупного аккаунта требуется 2FA-код из Telegram-бота.',code:'twofa_required',requires2FA:true});}
+      if(!u.twoFAHash&&!u.twoFA){
+        let legacyChatId=String(u.twoFAChatId||u.telegramChatId||'').trim();
+        if(!legacyChatId&&u.purchaseOrderId){
+          const order=await getDoc('telegram_personal_orders',String(u.purchaseOrderId));
+          legacyChatId=String(order?.userId||'').trim();
+        }
+        if(legacyChatId){
+          const freshTwoFA=genTwoFA();
+          await patchDoc('users',uid,{twoFAHash:twoFAHash(freshTwoFA),twoFAChatId:legacyChatId,twoFAIssuedAt:Date.now()});
+          await sendTelegramBotMessage(TELEGRAM_BOT_TOKEN,legacyChatId,'🔐 EKOOOL — новый 2FA-код для входа\n\n👤 @'+String(u.username||uid)+'\n🔑 2FA: '+freshTwoFA+'\n\nНикому не передавайте этот код.');
+        }
+      }else if(!u.twoFAHash&&u.twoFA){
+        await patchDoc('users',uid,{twoFAHash:twoFAHash(u.twoFA)});
+      }
+      if(!twoFA)return res.status(401).json({error:'Для этого покупного аккаунта требуется 2FA-код из Telegram-бота.',code:'twofa_required',requires2FA:true});
       const ok2=u.twoFAHash?twoFAHash(twoFA)===String(u.twoFAHash):String(u.twoFA||'')===twoFA;
       if(!ok2)return res.status(401).json({error:'Неверный 2FA-код.',code:'invalid_2fa',requires2FA:true});
     }
