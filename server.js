@@ -600,6 +600,15 @@ app.get('/api/store/sales',async(req,res)=>{
     res.json({ok:true,sales});
   }catch(e){res.status(500).json({error:e.message})}
 });
+app.get('/api/store/transactions',async(req,res)=>{
+  try{
+    const u=await storeAuth(req);if(!u)return res.status(401).json({error:'Войдите в EKOOOL'});
+    const rows=(await getCollection('ecoton_txs')).map(x=>({id:x.id,...x.data}))
+      .filter(x=>String(x.uid||'')===String(u.id))
+      .sort((a,b)=>Number(b.ts||0)-Number(a.ts||0)).slice(0,100);
+    res.json({ok:true,transactions:rows});
+  }catch(e){res.status(500).json({error:e.message||'Не удалось получить историю ECOTon'})}
+});
 app.get('/api/store/orders',async(req,res)=>{
   try{const u=await storeUser(req);if(!u)return res.status(401).json({error:'Войдите в EKOOOL'});const orders=(await getCollection('store_orders')).map(x=>({id:x.id,...x.data})).filter(x=>String(x.uid)===String(u.id)).sort((a,b)=>Number(b.createdAt||0)-Number(a.createdAt||0)).slice(0,50).map(x=>({id:x.id,productName:x.productName,type:x.type,price:Number(x.price||0),status:x.status,createdAt:x.createdAt,deliveryType:x.deliveryType||'manual',delivery:x.delivery??null}));res.json({ok:true,orders})}catch(e){res.status(500).json({error:e.message})}
 });
