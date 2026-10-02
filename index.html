@@ -340,9 +340,7 @@ function auth(mode='in',add){
          }
          return er.textContent=xx.error||'Неверный юзернейм или пароль';
        }
-       const s=await db.doc('users/'+xx.id).get();
-       if(!s.exists)return er.textContent='Не удалось загрузить аккаунт';
-       me={id:xx.id,...s.data()};
+       if(xx.user){me={id:xx.id,...xx.user};}else{const s=await db.doc('users/'+xx.id).get();if(!s.exists)return er.textContent='Не удалось загрузить аккаунт';me={id:xx.id,...s.data()};}
        const bb=bad(me);if(bb)return blocked(bb);
        try{localStorage.ekid=me.id;localStorage.ekproof=JSON.stringify({id:me.id,passHash:me.passHash})}catch(e){}
        if(add&&prev&&prev.id!==me.id)await botMsg(prev.id,'➕ На этом устройстве добавлен аккаунт @'+(me.username||me.id)+'.');
