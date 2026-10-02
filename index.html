@@ -721,7 +721,7 @@ const SYS=n=>'Ты — @iibot, ИИ-ассистент мессенджера EK
 const d2b=d=>{const[h,b]=d.split(','),m=h.match(/:(.*?);/)[1],bin=atob(b),u=new Uint8Array(bin.length);for(let i=0;i<bin.length;i++)u[i]=bin.charCodeAt(i);return new Blob([u],{type:m})};
 async function botSay(text){try{await db.doc('msgs/m'+Date.now()+Math.random().toString(36).slice(2,6)).set({chat:cid(me.id,AIBOT.id),a:AIBOT.id,b:me.id,ts:Date.now(),type:'text',text,bot:true})}catch(e){}}
 async function botSayTo(botId,text){try{await db.doc('msgs/m'+Date.now()+Math.random().toString(36).slice(2,6)).set({chat:cid(me.id,botId),a:botId,b:me.id,ts:Date.now(),type:'text',text,bot:true})}catch(e){}}
-async async function secretBotHook(p){
+async function secretBotHook(p){
  if(p.type!=='text')return botSayTo(SECRETBOT.id,'🎁 Чтобы отправить анонимный подарок, сначала напиши @username получателя.');
  try{const r=await fetch('/api/secretbot/message',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({userId:me.id,text:p.text||''})});const x=await r.json().catch(()=>({}));if(!r.ok)await botSayTo(SECRETBOT.id,'❌ '+(x.error||'SecretBot временно недоступен.'));}catch(e){await botSayTo(SECRETBOT.id,'❌ Не удалось связаться с SecretBot. Попробуй ещё раз.')}}
 async function secretBotGift(gift,nosell){try{const r=await fetch('/api/secretbot/gift',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({userId:me.id,gift,nosell:!!nosell})});const x=await r.json().catch(()=>({}));if(!r.ok){alert(x.error||'Не удалось отправить анонимный подарок');return false}return true}catch(e){alert('Не удалось связаться с SecretBot');return false}}
