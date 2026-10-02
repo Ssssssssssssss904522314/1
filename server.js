@@ -23,6 +23,16 @@ const METERED_ICE_SERVERS=process.env.METERED_ICE_SERVERS||'';
 const DONATE_URL=process.env.DONATE_URL||'https://ekool-site.onrender.com/';
 const TELEGRAM_ADMIN_IDS=String(process.env.TELEGRAM_ADMIN_IDS||'').split(',').map(x=>x.trim()).filter(Boolean);
 const TELEGRAM_SERVICE_CHAT_ID=String(process.env.TELEGRAM_SERVICE_CHAT_ID||'').trim();
+const SECRETBOT_ID='secretbot';
+const SECRETBOT_USERNAME='secretbot';
+async function ensureSecretBot(){
+  const bot=await getDoc('users',SECRETBOT_ID);
+  const data={name:'SecretBot',username:SECRETBOT_USERNAME,photo:'',bio:'Бот для анонимных подарков. Отправляет подарок получателю без раскрытия отправителя.',verified:true,bot:true,aiBot:false,lastSeen:Date.now()};
+  if(!bot)await putDoc('users',SECRETBOT_ID,data);
+  else await patchDoc('users',SECRETBOT_ID,{...data,createdAt:bot.createdAt||Date.now()});
+  const map=await getDoc('usernames',SECRETBOT_USERNAME);
+  if(!map||String(map.uid)!==SECRETBOT_ID)await putDoc('usernames',SECRETBOT_USERNAME,{uid:SECRETBOT_ID});
+}
 
 const DATA_DIR=path.join(__dirname,'data');
 const DATA_FILE=path.join(DATA_DIR,'db.json');
@@ -874,6 +884,67 @@ app.post('/api/helpbot/close',async(req,res)=>{
     res.json({ok:true});
   }catch(e){res.status(500).json({error:e.message})}
 });
+app.post('/api/secretbot/message',async(req,res)=>{
+  try{
+    const u=await userAuth(req);
+    if(!u||u.id!==String(req.body?.userId||''))return res.status(401).json({error:'Unauthorized'});
+    const text=String(req.body?.text||'').trim();
+    if(!text)return res.status(400).json({error:'Нужен текст'});
+    const key=String(u.id),state=await getDoc('secretbot_state',key);
+    let reply='';
+    if(!state||state.expires<Date.now()){
+      await putDoc('secretbot_state',key,{step:'username',expires:Date.now()+15*60*1000});
+      reply='Привет! Я бот для анонимных подарков 🎁\n\nНапиши юзернейм (@username) человека, которому хочешь отправить подарок.';
+    }else if(state.step==='username'){
+      const un=text.replace(/^@/,'').trim().toLowerCase();
+      const map=await getDoc('usernames',un);
+      if(!/^[a-z][a-z0-9_]{3,19}$/.test(un)||!map?.uid){
+        reply='❌ Такой юзернейм не найден. Напиши юзернейм ещё раз, например @username.';
+      }else if(String(map.uid)===String(u.id)){
+        reply='❌ Нельзя отправить анонимный подарок самому себе. Напиши другого получателя.';
+      }else if(String(map.uid)===SECRETBOT_ID){
+        reply='❌ Выбери обычного пользователя, а не бота.';
+      }else{
+        const recipient=await getDoc('users',String(map.uid));
+        if(!recipient){reply='❌ Пользователь не найден. Попробуй другой юзернейм.'}
+        else{
+          await putDoc('secretbot_state',key,{step:'gift',recipientId:String(map.uid),recipientUsername:un,expires:Date.now()+15*60*1000});
+          reply='Отличный вариант! 🎁 Теперь выбери подарок внизу через кнопку 🎁.\n\nЯ отправлю его от @SecretBot — твой аккаунт получателю не покажу.';
+        }
+      }
+    }else{
+      reply='🎁 Получатель уже выбран: @'+String(state.recipientUsername||'')+'\n\nНажми кнопку 🎁 и выбери подарок. Если хочешь сменить получателя — напиши @username.';
+    }
+    await putDoc('msgs','m'+Date.now()+crypto.randomBytes(3).toString('hex'),{chat:[SECRETBOT_ID,u.id].sort().join('_'),a:SECRETBOT_ID,b:u.id,ts:Date.now(),type:'text',text:reply,bot:true});
+    res.json({ok:true,text:reply});
+  }catch(e){res.status(500).json({error:e.message||'SecretBot error'})}
+});
+
+app.post('/api/secretbot/gift',async(req,res)=>{
+  try{
+    const u=await userAuth(req);
+    if(!u||u.id!==String(req.body?.userId||''))return res.status(401).json({error:'Unauthorized'});
+    const gift=String(req.body?.gift||'').trim();
+    const noSell=!!req.body?.nosell;
+    const prices={bear:15,tree:35,heart:50,ring:190};
+    const names={bear:'Мишка',tree:'Ёлка',heart:'Сердце',ring:'Кольцо'};
+    const emojis={bear:'🧸',tree:'🎄',heart:'❤️',ring:'💍'};
+    if(!prices[gift])return res.status(400).json({error:'Неизвестный подарок'});
+    const st=await getDoc('secretbot_state',String(u.id));
+    if(!st||st.expires<Date.now()||st.step!=='gift'||!st.recipientId)return res.status(400).json({error:'Сначала напишите @username получателя SecretBot.'});
+    const recipient=await getDoc('users',String(st.recipientId));
+    if(!recipient)return res.status(404).json({error:'Получатель не найден'});
+    const price=prices[gift],balance=Number(u.coins||0);
+    if(balance<price)return res.status(400).json({error:'Недостаточно ЕКОКоинов. Нужно '+price+', у вас '+balance+'.'});
+    if(!await addCoins(u.id,-price,'Анонимный подарок «'+names[gift]+'» → @'+String(st.recipientUsername||recipient.username||'').replace(/^@/,'')))return res.status(400).json({error:'Не удалось списать ЕКОКоины'});
+    const mid='m'+Date.now()+crypto.randomBytes(4).toString('hex');
+    await putDoc('msgs',mid,{chat:[SECRETBOT_ID,st.recipientId].sort().join('_'),a:SECRETBOT_ID,b:String(st.recipientId),ts:Date.now(),type:'gift',gift,anon:true,nosell:noSell,status:'sent',sentAt:Date.now(),bot:true});
+    await putDoc('msgs','m'+Date.now()+crypto.randomBytes(4).toString('hex'),{chat:[SECRETBOT_ID,u.id].sort().join('_'),a:SECRETBOT_ID,b:u.id,ts:Date.now(),type:'text',text:'✅ Подарок отправлен анонимно!\n\n🎁 '+emojis[gift]+' '+names[gift]+' → @'+String(st.recipientUsername||'')+'\n\nПолучатель увидит только @SecretBot. Твой юзернейм не раскрывается.',bot:true});
+    await deleteDoc('secretbot_state',String(u.id));
+    res.json({ok:true});
+  }catch(e){res.status(500).json({error:e.message||'Не удалось отправить анонимный подарок'})}
+});
+
 app.post('/api/botnew/message',async(req,res)=>{
   try{
     const au=await userAuth(req);if(!au||au.id!==String(req.body?.userId||''))return res.status(401).json({error:'Unauthorized'});
@@ -1944,7 +2015,8 @@ app.get('/api/health',async(req,res)=>{
 app.use(express.static(__dirname,{index:'index.html'}));
 app.get('*',(req,res)=>res.sendFile(path.join(__dirname,'index.html')));
 
-initDb().then(()=>{
+initDb().then(async()=>{
+  await ensureSecretBot();
   app.listen(PORT,'0.0.0.0',async()=>{console.log('EKOOOL server listening on '+PORT+' | storage: '+(usePg?'PostgreSQL':'JSON'));await setupTelegram();await setupCoinsTelegram();await setupMarketTelegram();});
 }).catch(e=>{
   console.error('EKOOOL database init failed:',e);
