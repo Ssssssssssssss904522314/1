@@ -973,16 +973,45 @@ async function uniqueGiftComposer(oid,after){
  d.querySelector('#ugs').onclick=async()=>{const er=d.querySelector('#uger'),price=Math.floor(Number(d.querySelector('#ugp').value)||0);if(price<1)return er.textContent='Укажите стоимость от 1 коина';const body={recipientId:oid,emoji:d.querySelector('#uge').value||'🎁',bgEmoji:d.querySelector('#ugb').value||'✨',bgColor:d.querySelector('#ugc').value,message:d.querySelector('#ugm').value,price,displayInName:d.querySelector('#ugn').checked,profileVisible:d.querySelector('#ugv').checked};try{const x=await ugApi('/api/unique-gifts/create',body);me.coins=x.coins;d.remove();toast('✨ Уникальный подарок отправлен!');if(after)after();else chat(oid)}catch(e){er.textContent=e.message}};
 }
 async function uniqueGiftView(id){
- const ss=await db.doc('ugifts/'+id).get();if(!ss.exists)return alert('Подарок не найден');const g={id:ss.id,...ss.data()},own=g.ownerId===me.id;
- const d=document.createElement('div');d.style.cssText='position:fixed;inset:0;background:#0009;display:flex;align-items:center;justify-content:center;z-index:260;padding:12px;overflow:auto';
- d.innerHTML='<div style="background:var(--card);color:var(--tx);border-radius:24px;padding:18px;width:min(94vw,430px);max-height:92vh;overflow:auto">'+ugCard(g)+'<div class="note" style="margin-top:10px">Создан '+new Date(g.createdAt||Date.now()).toLocaleString()+'</div>'+(own?'<div style="display:grid;gap:7px;margin-top:10px"><label class="note"><input type="checkbox" id="ugName" '+(g.displayInName!==false?'checked':'')+'> Отображать в нике</label><label class="note"><input type="checkbox" id="ugProfile" '+(g.profileVisible!==false?'checked':'')+'> Показывать на профиле</label><button class="pr" id="ugWear">'+(g.worn?'Снять с ника':'Носить рядом с ником')+'</button><button class="ib" id="ugSell">💰 Продать / снять с продажи</button><button class="ib" id="ugTransfer">↗ Передать другому пользователю</button></div>':'')+'<button class="ib" id="ugClose" style="width:100%;margin-top:10px">Закрыть</button></div>';
- document.body.appendChild(d);d.onclick=e=>{if(e.target===d)d.remove()};d.querySelector('#ugClose').onclick=()=>d.remove();
+ const ss=await db.doc('ugifts/'+id).get();if(!ss.exists)return alert('Подарок не найден');
+ const g={id:ss.id,...ss.data()},own=g.ownerId===me.id;
+ const owner=await getUser(g.ownerId)||{};
+ const serial=String(g.id||'').replace(/\\D/g,'').slice(-6)||String(g.createdAt||Date.now()).slice(-6);
+ const ownerName=owner.username?'@'+owner.username:(owner.name||'Пользователь');
+ const model='Unique Gift';
+ const pattern=g.bgEmoji||'✨';
+ const background=g.bgColor||'#5b6cff';
+ const value=Math.max(1,Number(g.price||0));
+ const d=document.createElement('div');
+ d.style.cssText='position:fixed;inset:0;background:#000b;display:flex;align-items:center;justify-content:center;z-index:260;padding:10px;overflow:auto';
+ d.innerHTML='<div style="background:#252b2f;color:#f4f6f8;border-radius:14px;width:min(94vw,455px);max-height:95vh;overflow:auto;box-shadow:0 20px 70px #0008">'+
+ '<div style="padding:10px 14px;display:flex;justify-content:flex-end;gap:12px;font-size:25px"><button class="ib" id="ugMore" style="padding:0 6px;background:transparent">⋮</button><button class="ib" id="ugCloseTop" style="padding:0 6px;background:transparent;font-size:25px">×</button></div>'+
+ '<div style="padding:0 20px 16px;text-align:center;background:linear-gradient(180deg,'+esc(background)+' 0%,#bd4b2d 100%);position:relative;overflow:hidden">'+
+ '<div style="position:absolute;inset:0;opacity:.16;display:grid;grid-template-columns:repeat(7,1fr);align-content:space-around;transform:rotate(-8deg);font-size:24px">'+Array.from({length:35},()=>'<span>'+esc(pattern)+'</span>').join('')+'</div>'+
+ '<div style="position:relative;font-size:92px;line-height:1.05;padding-top:8px;text-shadow:0 8px 22px #0007">'+esc(g.emoji||'🎁')+'</div>'+
+ '<div style="position:relative;font-size:21px;font-weight:800">Unique Gift <span style="opacity:.7">#'+esc(serial)+'</span></div>'+
+ '<div style="position:relative;margin-top:6px;font-weight:700;opacity:.92">'+esc(g.message||'Уникальный подарок')+'</div></div>'+
+ '<div style="padding:18px 16px">'+
+ '<div style="text-align:center;color:#aeb7bd;font-weight:700;margin-bottom:12px">Уникальный подарок EKOOOL</div>'+
+ '<div style="border:1px solid #5b6368;border-radius:9px;overflow:hidden">'+
+ '<div style="display:grid;grid-template-columns:132px 1fr;border-bottom:1px solid #5b6368"><b style="padding:9px 12px;background:#30373b">Владелец</b><span style="padding:9px 12px;color:#42d8c3">'+esc(ownerName)+'</span></div>'+
+ '<div style="display:grid;grid-template-columns:132px 1fr;border-bottom:1px solid #5b6368"><b style="padding:9px 12px;background:#30373b">Модель</b><span style="padding:9px 12px;font-weight:700">'+esc(model)+'</span></div>'+
+ '<div style="display:grid;grid-template-columns:132px 1fr;border-bottom:1px solid #5b6368"><b style="padding:9px 12px;background:#30373b">Узор</b><span style="padding:9px 12px;font-weight:700">'+esc(pattern)+' <small style="color:#42d8c3">custom</small></span></div>'+
+ '<div style="display:grid;grid-template-columns:132px 1fr;border-bottom:1px solid #5b6368"><b style="padding:9px 12px;background:#30373b">Фон</b><span style="padding:9px 12px;font-weight:700"><i style="display:inline-block;width:16px;height:16px;border-radius:50%;background:'+esc(background)+';vertical-align:-3px;margin-right:6px"></i>'+esc(background)+'</span></div>'+
+ '<div style="display:grid;grid-template-columns:132px 1fr;border-bottom:1px solid #5b6368"><b style="padding:9px 12px;background:#30373b">Количество</b><span style="padding:9px 12px;font-weight:700">1 экземпляр</span></div>'+
+ '<div style="display:grid;grid-template-columns:132px 1fr"><b style="padding:9px 12px;background:#30373b">Ценность</b><span style="padding:9px 12px;font-weight:700;color:#42d8c3">~ '+value.toLocaleString('ru-RU')+' ЭКОкоинов</span></div>'+
+ '</div>'+
+ '<div style="text-align:center;color:#9ea7ad;font-weight:700;padding:14px 5px 8px">'+(g.profileVisible!==false?'Этот подарок виден в профиле.':'Этот подарок скрыт в профиле.')+' '+(own?'<button class="ib" id="ugHide" style="background:transparent;color:#42d8c3;padding:0">'+(g.profileVisible!==false?'Скрыть':'Показать')+' ›</button>':'')+'</div>'+
+ (own?'<div style="display:grid;gap:8px;margin-top:4px"><button class="pr" id="ugWear">'+(g.worn?'Снять с ника':'Носить рядом с ником')+'</button><button class="ib" id="ugSell">💰 Продать / снять с продажи</button><button class="ib" id="ugTransfer">↗ Передать</button></div>':'')+
+ '<button class="pr" id="ugClose" style="width:100%;margin-top:10px">OK</button></div></div>';
+ document.body.appendChild(d);
+ const close=()=>d.remove();d.querySelector('#ugClose').onclick=close;d.querySelector('#ugCloseTop').onclick=close;d.onclick=e=>{if(e.target===d)close()};
+ d.querySelector('#ugMore').onclick=()=>{if(own)alert('В этом меню можно управлять отображением, продажей и передачей подарка.');else alert('Уникальный подарок можно посмотреть в профиле владельца.')};
  if(own){
-  const save=async()=>{try{await ugApi('/api/unique-gifts/settings',{giftId:id,displayInName:d.querySelector('#ugName').checked,profileVisible:d.querySelector('#ugProfile').checked});g.displayInName=d.querySelector('#ugName').checked;g.profileVisible=d.querySelector('#ugProfile').checked}catch(e){alert(e.message)}};
-  d.querySelector('#ugName').onchange=save;d.querySelector('#ugProfile').onchange=save;
-  d.querySelector('#ugWear').onclick=async()=>{try{const x=await ugApi('/api/unique-gifts/wear',{giftId:id,wear:!g.worn});g.worn=!g.worn;if(g.worn)me.wornUniqueGift=x.gift;else if(me.wornUniqueGift?.id===id)me.wornUniqueGift=null;d.remove();profile()}catch(e){alert(e.message)}};
+  d.querySelector('#ugHide').onclick=async()=>{try{await ugApi('/api/unique-gifts/settings',{giftId:id,profileVisible:!(g.profileVisible!==false)});g.profileVisible=!(g.profileVisible!==false);uniqueGiftView(id)}catch(e){alert(e.message)}};
+  d.querySelector('#ugWear').onclick=async()=>{try{const x=await ugApi('/api/unique-gifts/wear',{giftId:id,wear:!g.worn});g.worn=!g.worn;if(g.worn)me.wornUniqueGift=x.gift;else if(me.wornUniqueGift?.id===id)me.wornUniqueGift=null;close();profile()}catch(e){alert(e.message)}};
   d.querySelector('#ugSell').onclick=async()=>{try{const mk=await fetch('/api/unique-gifts/market',{credentials:'include'}).then(r=>r.json());const listed=(mk.listings||[]).find(x=>x.giftId===id);if(listed){await ugApi('/api/unique-gifts/cancel-sale',{giftId:id});toast('Объявление снято');return uniqueGiftView(id)}const p=prompt('Цена продажи в ЭКОкоинах:',String(g.price||100));const n=Math.floor(Number(p)||0);if(n<1)return;await ugApi('/api/unique-gifts/sell',{giftId:id,price:n});toast('Подарок выставлен на продажу');uniqueGiftView(id)}catch(e){alert(e.message)}};
-  d.querySelector('#ugTransfer').onclick=async()=>{const q=prompt('Юзернейм получателя:');if(!q)return;try{const u=await findUser(q);if(!u)return alert('Пользователь не найден');await ugApi('/api/unique-gifts/transfer',{giftId:id,toId:u.id});toast('Подарок передан');d.remove();uniqueGiftsScreen()}catch(e){alert(e.message)}};
+  d.querySelector('#ugTransfer').onclick=async()=>{const q=prompt('Юзернейм получателя:');if(!q)return;try{const u=await findUser(q);if(!u)return alert('Пользователь не найден');await ugApi('/api/unique-gifts/transfer',{giftId:id,toId:u.id});toast('Подарок передан');close();uniqueGiftsScreen()}catch(e){alert(e.message)}};
  }
 }
 async function uniqueGiftsScreen(){
