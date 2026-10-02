@@ -329,7 +329,7 @@ app.post('/api/admin/login',(req,res)=>{
   res.json({token:adminToken()});
 });
 app.get('/api/admin/check',(req,res)=>isAdmin(req)?res.json({ok:true}):res.status(401).json({error:'Unauthorized'}));
-app.patch('/api/admin/user-label/:id',async(req,res)=>{try{if(!isAdmin(req))return res.status(401).json({error:'Unauthorized'});const key=String(req.body?.key||'');if(!/^(verified|supportAgent|owner|ceo|red|tester|unknown|scam|fake|restricted|banned)$/.test(key))return res.status(400).json({error:'Invalid label'});const value=!!req.body?.value;await patchDoc('users',req.params.id,{[key]:value});res.json({ok:true,key,value})}catch(e){res.status(500).json({error:e.message})}});
+app.patch('/api/admin/user-label/:id',async(req,res)=>{try{if(!isAdmin(req))return res.status(401).json({error:'Unauthorized'});const key=String(req.body?.key||'');if(!/^(verified|supportAgent|ecotonSupport|owner|ceo|red|tester|unknown|scam|fake|restricted|banned)$/.test(key))return res.status(400).json({error:'Invalid label'});const value=!!req.body?.value;await patchDoc('users',req.params.id,{[key]:value});res.json({ok:true,key,value})}catch(e){res.status(500).json({error:e.message})}});
 
 
 
