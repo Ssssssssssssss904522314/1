@@ -353,7 +353,6 @@ function auth(mode='in',add){
  $('#sw').onclick=async e=>{
    e.preventDefault();
    if(reg){auth('in',add);return;}
-   try{const r=await api?.('/api/telegram/registration-bot');if(r?.botUrl){location.href=r.botUrl;return;}}catch(_){}
    try{const r=await fetch('/api/telegram/registration-bot');const x=await r.json();if(r.ok&&x.botUrl){location.href=x.botUrl;return;}}catch(_){}
    $('#er').textContent='Регистрационный бот пока недоступен';
  };
