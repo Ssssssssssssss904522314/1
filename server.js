@@ -18,6 +18,11 @@ const TELEGRAM_COINS_WEBHOOK_URL=process.env.TELEGRAM_COINS_WEBHOOK_URL||'https:
 const TELEGRAM_MARKET_BOT_TOKEN=process.env.TELEGRAM_MARKET_BOT_TOKEN||'';
 const TELEGRAM_MARKET_WEBHOOK_SECRET=process.env.TELEGRAM_MARKET_WEBHOOK_SECRET||'';
 const TELEGRAM_MARKET_WEBHOOK_URL=process.env.TELEGRAM_MARKET_WEBHOOK_URL||'https://ekool-server.onrender.com/api/telegram/market-webhook';
+const TELEGRAM_REG_BOT_TOKEN=process.env.TELEGRAM_REG_BOT_TOKEN||'';
+const TELEGRAM_REG_BOT_USERNAME=process.env.TELEGRAM_REG_BOT_USERNAME||'';
+const TELEGRAM_REG_WEBHOOK_SECRET=process.env.TELEGRAM_REG_WEBHOOK_SECRET||'';
+const TELEGRAM_REG_WEBHOOK_URL=process.env.TELEGRAM_REG_WEBHOOK_URL||'https://ekool-server.onrender.com/api/telegram/registration-webhook';
+const TELEGRAM_REG_SITE_URL=process.env.TELEGRAM_REG_SITE_URL||'https://ekool-server.onrender.com/';
 const METERED_ICE_SERVERS=process.env.METERED_ICE_SERVERS||'';
 
 const DONATE_URL=process.env.DONATE_URL||'https://ekool-site.onrender.com/';
@@ -238,6 +243,9 @@ app.get('/api/calls/config',async(req,res)=>{try{let iceServers=[];if(METERED_IC
 
 app.use(express.json({limit:'12mb'}));
 const installSessionAuth=require('./session-auth.js');
+const installRegistrationBot=require('./telegram-registration-bot.js');
+app.get('/api/telegram/registration-bot',async(req,res)=>{if(!TELEGRAM_REG_BOT_USERNAME)return res.status(503).json({error:'Registration bot username is not configured'});res.json({ok:true,username:TELEGRAM_REG_BOT_USERNAME,botUrl:'https://t.me/'+TELEGRAM_REG_BOT_USERNAME});});
+
 app.use((req,res,next)=>{
   res.setHeader('Access-Control-Allow-Origin','*');
   res.setHeader('Access-Control-Allow-Headers','Content-Type, Authorization');
@@ -2071,7 +2079,11 @@ app.get('*',(req,res)=>res.sendFile(path.join(__dirname,'index.html')));
 
 initDb().then(async()=>{
   await ensureSecretBot();
-  app.listen(PORT,'0.0.0.0',async()=>{console.log('EKOOOL server listening on '+PORT+' | storage: '+(usePg?'PostgreSQL':'JSON'));await setupTelegram();await setupCoinsTelegram();await setupMarketTelegram();});
+  app.listen(PORT,'0.0.0.0',async()=>{console.log('EKOOOL server listening on '+PORT+' | storage: '+(usePg?'PostgreSQL':'JSON'));await setupTelegram();await setupCoinsTelegram();await setupMarketTelegram();
+    if(TELEGRAM_REG_BOT_TOKEN&&TELEGRAM_REG_BOT_USERNAME){
+      installRegistrationBot({app,crypto,getDoc,putDoc,patchDoc,getCollection,token:TELEGRAM_REG_BOT_TOKEN,webhookSecret:TELEGRAM_REG_WEBHOOK_SECRET,webhookUrl:TELEGRAM_REG_WEBHOOK_URL,botUsername:TELEGRAM_REG_BOT_USERNAME,siteUrl:TELEGRAM_REG_SITE_URL});
+    }else console.log('EKOOOL Registration Telegram bot is not configured');
+  });
 }).catch(e=>{
   console.error('EKOOOL database init failed:',e);
   process.exit(1);
