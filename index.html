@@ -312,16 +312,54 @@ const genId=()=>'EK-'+Array.from({length:8},()=>'ABCDEFGHJKLMNPQRSTUVWXYZ2345678
 const isPurchasedUser=u=>!!(u&&((u.purchased===true)||(u.bio==='Покупной аккаунт EKOOOL')));
 // ---- auth ----
 function auth(mode='in',add){
- const reg=mode==='up',prev=add?me:null;
- app.innerHTML=`<div class="body c" style="padding-top:${add?'4vh':'12vh'}">${add?'<div style="text-align:left"><button class="ib" id="bk">← Назад</button></div>':''}<h1 style="font-size:34px;margin:0;color:var(--pr)">EKOOOL</h1><p style="color:var(--mut)">${add?'Добавить аккаунт':'Мессенджер'}</p>
- ${reg?'<input class="t" id="nm" placeholder="Ваше имя"><input class="t" id="un" placeholder="Юзернейм (английские буквы)">':'<input class="t" id="id" placeholder="Юзернейм или номер (+888…)">'}
- <input class="t" id="pw" type="password" placeholder="Пароль (от 6 символов)">
- <input class="t" id="tfa" type="password" inputmode="text" autocomplete="one-time-code" placeholder="Код из Telegram-бота (5 цифр)" style="display:none">
- <div class="err" id="er"></div>
- <button class="pr" style="width:100%" id="go">${reg?'Создать аккаунт':'Войти'}</button><p><a href="#" id="sw" style="color:var(--pr)">${reg?'Уже есть аккаунт? Войти':'Нет аккаунта? Регистрация'}</a></p>
- ${isAdmin?'<p><a href="#" id="adl" style="color:var(--mut)">Админ-панель</a></p>':''}<div class="note">${reg?'Регистрация без электронной почты. Нужны только имя, юзернейм и пароль.':'Юзернейм — ваш публичный адрес. Для входа нужны юзернейм и пароль.'}</div></div>`;
- $('#sw').onclick=e=>{e.preventDefault();auth(reg?'in':'up',add)};if(add)$('#bk').onclick=settings;
+ const prev=add?me:null;
+ const reg=mode==='up';
+ app.innerHTML=`
+ <style>
+ .eko-login-wrap{min-height:100%;display:flex;align-items:center;justify-content:center;padding:34px 18px;position:relative;z-index:2}
+ .eko-login-card{width:min(100%,382px);padding:28px 26px 24px;border-radius:28px;background:rgba(18,20,25,.72);border:1px solid rgba(255,255,255,.16);box-shadow:0 28px 80px rgba(0,0,0,.38),inset 0 1px 0 rgba(255,255,255,.10);backdrop-filter:blur(30px) saturate(150%);-webkit-backdrop-filter:blur(30px) saturate(150%);text-align:center;animation:ekoLoginIn .55s cubic-bezier(.22,1,.36,1)}
+ .eko-login-logo{width:112px;height:112px;border-radius:30px;margin:0 auto 18px;background:#020203;display:flex;align-items:center;justify-content:center;box-shadow:0 16px 38px rgba(0,0,0,.42),inset 0 1px 0 rgba(255,255,255,.08)}
+ .eko-login-logo img{width:68px;height:68px;object-fit:contain;border-radius:18px}
+ .eko-login-title{margin:0;color:#fff;font-size:31px;line-height:1.1;font-weight:850;letter-spacing:-.8px}
+ .eko-login-sub{margin:10px 0 22px;color:rgba(255,255,255,.54);font-size:14px}
+ .eko-login-field{width:100%;height:50px;margin:0 0 12px;padding:0 16px;border-radius:15px!important;border:1px solid rgba(255,255,255,.15)!important;background:rgba(255,255,255,.10)!important;color:#fff!important;outline:none;box-shadow:inset 0 1px 0 rgba(255,255,255,.05)!important}
+ .eko-login-field::placeholder{color:rgba(255,255,255,.48)}
+ .eko-login-field:focus{border-color:rgba(111,76,255,.85)!important;box-shadow:0 0 0 4px rgba(91,54,255,.16),inset 0 1px 0 rgba(255,255,255,.08)!important}
+ .eko-login-main{width:100%;height:48px;border-radius:15px!important;margin-top:3px;background:linear-gradient(135deg,#4b00ff,#2d00e9)!important;border:1px solid rgba(255,255,255,.18)!important;color:#fff!important;font-size:16px;font-weight:800;box-shadow:0 10px 28px rgba(64,24,255,.34)!important}
+ .eko-login-qr{width:100%;height:48px;margin-top:11px;border-radius:15px!important;background:rgba(63,91,122,.48)!important;border:1px solid rgba(132,193,235,.28)!important;color:#8ed8ff!important;font-weight:750}
+ .eko-login-register{margin:21px 0 0;color:rgba(255,255,255,.50);font-size:13px}
+ .eko-login-register a{color:#6440ff;text-decoration:none;font-weight:750}
+ .eko-login-error{min-height:18px;margin:2px 0 8px;color:#ff6b75;font-size:13px}
+ .eko-login-back{display:block;width:100%;margin-top:10px}
+ @keyframes ekoLoginIn{from{opacity:0;transform:translateY(14px) scale(.97)}to{opacity:1;transform:none}}
+ @media(max-width:520px){.eko-login-wrap{padding:22px 12px}.eko-login-card{padding:24px 18px 21px;border-radius:25px}.eko-login-logo{width:96px;height:96px}.eko-login-logo img{width:58px;height:58px}.eko-login-title{font-size:28px}}
+ </style>
+ <div class="eko-login-wrap">
+  <div class="eko-login-card">
+   ${add?'<button class="ib eko-login-back" id="bk">← Назад</button>':''}
+   <div class="eko-login-logo"><img src="/icon.svg" alt="EKOOOL"></div>
+   <h1 class="eko-login-title">${reg?'Регистрация':'Вход в EKOOOL'}</h1>
+   <div class="eko-login-sub">${reg?'Создайте аккаунт через Telegram':'Введите юзернейм или номер и пароль'}</div>
+   ${reg
+    ?'<input class="eko-login-field" id="nm" placeholder="Имя" autocomplete="name"><input class="eko-login-field" id="un" placeholder="Юзернейм" autocomplete="username"><input class="eko-login-field" id="pw" type="password" placeholder="Пароль" autocomplete="new-password">'
+    :'<input class="eko-login-field" id="id" placeholder="Юзернейм или номер (+888…)" autocomplete="username"><input class="eko-login-field" id="pw" type="password" placeholder="Пароль" autocomplete="current-password"><input class="eko-login-field" id="tfa" type="password" inputmode="text" autocomplete="one-time-code" placeholder="Код из Telegram-бота" style="display:none">'}
+   <div class="eko-login-error" id="er"></div>
+   <button class="eko-login-main" id="go">${reg?'Создать аккаунт':'Войти'}</button>
+   ${!reg?'<button class="eko-login-qr" id="qrgo">▦&nbsp;&nbsp; Войти через QR-код</button>':''}
+   <p class="eko-login-register">${reg?'Уже есть аккаунт? ':'У вас нет аккаунта? '}<a href="#" id="sw">${reg?'Войти':'Зарегистрироваться'}</a></p>
+   ${isAdmin?'<p><a href="#" id="adl" style="color:var(--mut)">Админ-панель</a></p>':''}
+  </div>
+ </div>`;
+ $('#sw').onclick=async e=>{
+   e.preventDefault();
+   if(reg){auth('in',add);return;}
+   try{const r=await api?.('/api/telegram/registration-bot');if(r?.botUrl){location.href=r.botUrl;return;}}catch(_){}
+   try{const r=await fetch('/api/telegram/registration-bot');const x=await r.json();if(r.ok&&x.botUrl){location.href=x.botUrl;return;}}catch(_){}
+   $('#er').textContent='Регистрационный бот пока недоступен';
+ };
+ if(add&&$('#bk'))$('#bk').onclick=settings;
  if($('#adl'))$('#adl').onclick=e=>{e.preventDefault();admin()};
+ if($('#qrgo'))$('#qrgo').onclick=()=>{if(typeof deviceLogin==='function')deviceLogin();else{location.hash='#device-login';location.reload()}};
  $('#go').onclick=async()=>{
    const pw=$('#pw').value,er=$('#er');await loadLock();if(LOCK.on&&!isAdmin)return lockScreen();
    if(pw.length<6)return er.textContent='Пароль: минимум 6 символов';
@@ -332,9 +370,7 @@ function auth(mode='in',add){
        const xx=await rr.json().catch(()=>({}));
        if(!rr.ok){
          if(xx.code==='login_code_required'||xx.code==='login_code_expired'||xx.code==='invalid_login_code'||xx.requiresCode){
-           $('#tfa').style.display='block';
-           $('#tfa').focus();
-           $('#go').textContent='Ввести код';
+           $('#tfa').style.display='block';$('#tfa').focus();$('#go').textContent='Ввести код';
            er.textContent=xx.code==='invalid_login_code'?'❌ Неверный код.':'📨 Код из Telegram-бота отправлен. Введите его сюда.';
            return;
          }
@@ -357,8 +393,7 @@ function auth(mode='in',add){
      const rr=await fetch('/api/auth/register/complete',{method:'POST',headers:{'Content-Type':'application/json'},credentials:'include',body:JSON.stringify({name:nm,username:un,password:pw})});
      const xx=await rr.json().catch(()=>({}));$('#go').disabled=false;
      if(!rr.ok)return er.textContent=xx.error||'Не удалось зарегистрировать аккаунт';
-     const ss=await db.doc('users/'+xx.id).get();
-     if(!ss.exists)return er.textContent='Аккаунт создан, но не удалось загрузить профиль';
+     const ss=await db.doc('users/'+xx.id).get();if(!ss.exists)return er.textContent='Аккаунт создан, но не удалось загрузить профиль';
      me={id:xx.id,...ss.data()};
      try{localStorage.ekid=me.id;localStorage.ekproof=JSON.stringify({id:me.id,passHash:me.passHash})}catch(e){}
      cache={};try{await botLoginEvent(me.id,'registration')}catch(e){}if(add&&prev&&prev.id!==me.id){try{await botMsg(me.id,'🆕 Аккаунт добавлен на это устройство.')}catch(e){}}
