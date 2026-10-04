@@ -4,6 +4,7 @@ module.exports=function installRegistrationBot({app,crypto,getDoc,putDoc,patchDo
   const stateId=chatId=>String(chatId);
   const makeId=()=> 'EK-'+Array.from({length:8},()=> 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'[crypto.randomInt(0,32)]).join('');
   const hashPassword=(password,salt)=>crypto.createHash('sha256').update(salt+password).digest('hex');
+  const makePasswordRecord=password=>{const salt=crypto.randomBytes(16).toString('hex');return {salt,passHash:hashPassword(password,salt)}};
   const validUsername=u=>/^[a-z][a-z0-9_]{3,19}$/.test(u);
   const send=(chat_id,text,reply_markup)=>tgFetch(token,'sendMessage',{chat_id,text,reply_markup});
   const edit=(chat_id,message_id,text,reply_markup)=>tgFetch(token,'editMessageText',{chat_id,message_id,text,reply_markup});
@@ -21,10 +22,10 @@ module.exports=function installRegistrationBot({app,crypto,getDoc,putDoc,patchDo
     const existing=await getCollection('users');
     const duplicate=existing.find(x=>String(x.data?.telegramChatId||'')===String(chatId));
     if(duplicate)return send(chatId,'⚠️ Этот Telegram уже связан с аккаунтом EKOOOL.\n\nЮзернейм: @'+String(duplicate.data?.username||''));
-    const salt=crypto.randomBytes(16).toString('hex');
     const uid=makeId();
-    const user={name:state.name,photo:'',bio:'',verified:false,purchased:false,coins:1000,username:state.username,extra:[],salt:state.salt||salt,passHash:state.passHash||hashPassword(state.password||'',state.salt||salt),lastSeen:now(),ts:now(),telegramChatId:String(chatId),telegramUsername:String(state.telegramUsername||'')};
+    const user={name:state.name,photo:'',bio:'',verified:false,purchased:false,coins:1000,username:state.username,extra:[],salt:state.salt,passHash:state.passHash,lastSeen:now(),ts:now(),telegramChatId:String(chatId),telegramUsername:String(state.telegramUsername||'')};
     await putDoc('users',uid,user);
+    if(await getDoc('usernames',state.username))return send(chatId,'❌ Юзернейм только что заняли. Отправь /start и выбери другой.');
     await putDoc('usernames',state.username,{uid});
     await patchDoc('registration_bot_states',stateId(chatId),{step:'done',uid,completedAt:now(),expiresAt:now()+24*60*60*1000});
     return send(chatId,'✅ Регистрация завершена!\n\n👤 Имя: '+state.name+'\n🔹 Юзернейм: @'+state.username+'\n\nАккаунт EKOOOL создан. Теперь можешь войти в мессенджер.',keyboard.login);
@@ -69,7 +70,8 @@ module.exports=function installRegistrationBot({app,crypto,getDoc,putDoc,patchDo
       }
       if(st.step==='password'){
         if(text.length<6||text.length>128)return send(chatId,'❌ Пароль должен быть от 6 до 128 символов. Попробуй ещё раз.',keyboard.cancel);
-        await patchDoc('registration_bot_states',stateId(chatId),{step:'confirm',password:text});
+        const passwordRecord=makePasswordRecord(text);
+        await patchDoc('registration_bot_states',stateId(chatId),{step:'confirm',salt:passwordRecord.salt,passHash:passwordRecord.passHash});
         await send(chatId,'Проверь данные:\n\n👤 Имя: '+st.name+'\n🔹 Юзернейм: @'+st.username+'\n🔐 Пароль: ••••••••\n\nЕсли всё верно, нажми «Создать аккаунт».', {inline_keyboard:[[ {text:'✅ Создать аккаунт',callback_data:'reg_confirm'} ],[ {text:'❌ Отмена',callback_data:'reg_cancel'} ]]});
         return;
       }
