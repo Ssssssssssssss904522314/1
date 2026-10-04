@@ -156,7 +156,7 @@ function clearSessionCookie(res){
 }
 async function createSession(uid,meta={}){
   const token=crypto.randomBytes(32).toString('hex'),sid=sessionHash(token);
-  await putDoc('sessions',sid,{uid:String(uid),expires:Date.now()+SESSION_TTL,...meta});
+  await putDoc('sessions',sid,{uid:String(uid),createdAt:Date.now(),expires:Date.now()+SESSION_TTL,...meta});
   return token;
 }
 async function sessionAuth(req){
