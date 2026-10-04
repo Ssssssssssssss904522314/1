@@ -1,4 +1,5 @@
 module.exports=function installRegistrationBot({app,crypto,getDoc,putDoc,patchDoc,getCollection,tgFetch,token,webhookSecret,webhookUrl,botUsername,siteUrl}){
+  if(!tgFetch)tgFetch=async(tok,method,body)=>{const r=await fetch('https://api.telegram.org/bot'+tok+'/'+method,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body||{})});const x=await r.json().catch(()=>({}));if(!r.ok||!x.ok)throw new Error(x?.description||'Telegram API error');return x.result};
   const now=()=>Date.now();
   const stateId=chatId=>String(chatId);
   const makeId=()=> 'EK-'+Array.from({length:8},()=> 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'[crypto.randomInt(0,32)]).join('');
