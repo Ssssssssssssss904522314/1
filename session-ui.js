@@ -38,35 +38,23 @@ async function deviceLogin(){
 async function approveDevice(id,code){
   try{await api('/api/device/login/approve',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(id?{id}:{code})});toast?.('Вход подтверждён ✓');location.hash='';}catch(e){alert(e.message)}
 }
-async function register(){
-  const nm=$('#sxnm')?.value.trim(),un=($('#sxun')?.value||'').trim().toLowerCase().replace(/^@/,''),pw=$('#sxpw')?.value||'',er=$('#sxer');
-  if(!nm)return er.textContent='Введите имя';if(!/^[a-z][a-z0-9_]{3,19}$/.test(un))return er.textContent='Юзернейм: 4–20 символов, английские буквы, цифры и _';if(pw.length<6)return er.textContent='Пароль: минимум 6 символов';
+async function openRegistrationBot(){
+  const er=document.getElementById('sxer');
   try{
-    const q=await api('/api/auth/register/request',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:nm,username:un,password:pw})});
-    er.textContent='Открываем @BotRegistor…';window.open(q.botUrl,'_blank');
-    const t=setInterval(async()=>{try{const s=await api('/api/auth/register/status?id='+encodeURIComponent(q.id));if(s.status==='registered'){clearInterval(t);location.reload()}else if(s.status==='expired'){clearInterval(t);er.textContent='Заявка истекла. Начните регистрацию заново.'}}catch(e){}},1200);
-  }catch(e){er.textContent=e.message}
+    const r=await api('/api/telegram/registration-bot');
+    location.href=r.botUrl;
+  }catch(e){if(er)er.textContent=e.message||'Регистрационный бот пока не подключён';}
 }
-window.auth=function(){
-  snow();
-  base('EKOOOL',`<div class="note" style="text-align:center;margin-bottom:14px">Мессенджер</div>
-    <input class="t" id="sxid" placeholder="Юзернейм или номер (+888…)" autocomplete="username">
-    <input class="t" id="sxpw" type="password" placeholder="Пароль" autocomplete="current-password">
-    <div class="err" id="sxer"></div>
-    <button class="pr" id="sxgo" style="width:100%">Войти</button>
-    <div style="display:flex;gap:8px;margin-top:10px"><button class="ib" id="sxqr" style="flex:1">▣ QR-код</button><button class="ib" id="sxcode" style="flex:1">123-123 Код</button></div>
-    <p style="text-align:center"><a href="#" id="sxreg" style="color:var(--pr)">Регистрация через Telegram</a></p>`);
-  $('#sxgo').onclick=async()=>{
-    const er=$('#sxer');try{const r=await api('/api/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:$('#sxid').value.trim(),password:$('#sxpw').value})});
-      if(r.user){me={id:r.id,...r.user}}else{const s=await db.doc('users/'+r.id).get();if(!s.exists)throw Error('Аккаунт не найден');me={id:r.id,...s.data()}}
-      localStorage.ekid=me.id;try{localStorage.ekproof=JSON.stringify({id:me.id,passHash:me.passHash})}catch(e){};start();
-    }catch(e){er.textContent=e.message}
-  };
-  $('#sxqr').onclick=deviceLogin;$('#sxcode').onclick=()=>codeLogin();$('#sxreg').onclick=e=>{e.preventDefault();regScreen()};
-};
 function regScreen(){
-  base('Регистрация',`<input class="t" id="sxnm" placeholder="Ваше имя"><input class="t" id="sxun" placeholder="@psevdonim"><input class="t" id="sxpw" type="password" placeholder="Пароль от 6 символов"><div class="err" id="sxer"></div><button class="pr" id="sxreggo" style="width:100%">Продолжить через Telegram</button><button class="ib" id="sxback" style="width:100%;margin-top:8px">← Войти</button>`);
-  $('#sxreggo').onclick=register;$('#sxback').onclick=auth;
+  base('Регистрация',`<div class="note" style="line-height:1.55">
+    Регистрация EKOOOL проходит прямо в Telegram.<br><br>
+    1. Откройте регистрационного бота.<br>
+    2. Напишите имя.<br>
+    3. Выберите юзернейм.<br>
+    4. Придумайте пароль.<br>
+    5. После подтверждения аккаунт будет создан.
+  </div><div class="err" id="sxer"></div><button class="pr" id="sxreggo" style="width:100%">🤖 Открыть бота в Telegram</button><button class="ib" id="sxback" style="width:100%;margin-top:8px">← Войти</button>`);
+  $('#sxreggo').onclick=openRegistrationBot;$('#sxback').onclick=auth;
 }
 async function codeLogin(){
   base('Вход по коду',`<div class="note">На новом устройстве должен быть показан код вида <b>123-123</b>. Введите его здесь, чтобы разрешить вход.</div><input class="t" id="sxcodein" placeholder="123-123" inputmode="numeric" maxlength="7"><div class="err" id="sxer"></div><button class="pr" id="sxapprove" style="width:100%">Подтвердить вход</button>`);
