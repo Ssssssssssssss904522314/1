@@ -1,7 +1,7 @@
 module.exports=function installSessionAuth({app,crypto,getDoc,putDoc,patchDoc,deleteDoc,getCollection,createSession,sessionAuth,setSessionCookie,clearSessionCookie,sendTelegramBotMessage,telegramBotToken,telegramWebhookSecret='',botUsername='BotRegistor'}){
   const now=()=>Date.now();
   const reqId=()=>crypto.randomBytes(24).toString('base64url');
-  const code=()=>String(crypto.randomInt(100000,1000000)).replace(/^(\\d{3})(\\d{3})$/,'$1-$2');
+  const code=()=>String(crypto.randomInt(100000,1000000)).replace(/^(\d{3})(\d{3})$/,'$1-$2');
   const hash=v=>crypto.createHash('sha256').update('EKOOOL-DEVICE:'+String(v)).digest('hex');
   const deviceInfo=req=>String(req.body?.device||req.headers['user-agent']||'Неизвестное устройство').slice(0,180);
   const city=async req=>{
@@ -104,7 +104,7 @@ module.exports=function installSessionAuth({app,crypto,getDoc,putDoc,patchDoc,de
     next();
   });
   app._ekooolRegistrationHandler=async(msg)=>{
-    const text=String(msg?.text||'').trim(),m=text.match(/^\\/start\\s+reg_([A-Za-z0-9_-]{20,100})$/);
+    const text=String(msg?.text||'').trim(),m=text.match(/^\/start\s+reg_([A-Za-z0-9_-]{20,100})$/);
     if(!m)return false;
     const id=m[1],r=await getDoc('registration_requests',id);
     if(!r||r.status!=='pending'||Number(r.expiresAt||0)<=now())return true;
