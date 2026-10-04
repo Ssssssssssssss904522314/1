@@ -359,7 +359,7 @@ function auth(mode='in',add){
  };
  if(add&&$('#bk'))$('#bk').onclick=settings;
  if($('#adl'))$('#adl').onclick=e=>{e.preventDefault();admin()};
- if($('#qrgo'))$('#qrgo').onclick=()=>{if(typeof deviceLogin==='function')deviceLogin();else{location.hash='#device-login';location.reload()}};
+ if($('#qrgo'))$('#qrgo').onclick=()=>{if(typeof window.ekooolDeviceLogin==='function')window.ekooolDeviceLogin();else $('#er').textContent='QR-вход пока недоступен';};
  $('#go').onclick=async()=>{
    const pw=$('#pw').value,er=$('#er');await loadLock();if(LOCK.on&&!isAdmin)return lockScreen();
    if(pw.length<6)return er.textContent='Пароль: минимум 6 символов';
