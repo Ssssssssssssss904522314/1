@@ -1,4 +1,4 @@
-module.exports=function installSessionAuth({app,crypto,getDoc,putDoc,patchDoc,deleteDoc,getCollection,createSession,sessionAuth,setSessionCookie,clearSessionCookie,sendTelegramBotMessage,telegramBotToken,botUsername='BotRegistor'}){
+module.exports=function installSessionAuth({app,crypto,getDoc,putDoc,patchDoc,deleteDoc,getCollection,createSession,sessionAuth,setSessionCookie,clearSessionCookie,sendTelegramBotMessage,telegramBotToken,telegramWebhookSecret='',botUsername='BotRegistor'}){
   const now=()=>Date.now();
   const reqId=()=>crypto.randomBytes(24).toString('base64url');
   const code=()=>String(crypto.randomInt(100000,1000000)).replace(/^(\\d{3})(\\d{3})$/,'$1-$2');
@@ -38,8 +38,9 @@ module.exports=function installSessionAuth({app,crypto,getDoc,putDoc,patchDoc,de
     try{
       const u=await sessionAuth(req);if(!u)return res.status(401).json({error:'Нужно быть вошедшим в EKOOOL на этом устройстве'});
       const id=String(req.body?.id||'').trim(),c=String(req.body?.code||'').trim();
-      const r=await getDoc('device_login_requests',id);
-      if(!r||Number(r.expiresAt||0)<=now()||r.status!=='pending')return res.status(400).json({error:'Запрос входа устарел или уже обработан'});
+      let r=await getDoc('device_login_requests',id);
+      if(!r&&c){const docs=await getCollection('device_login_requests');const h=hash(c);const found=docs.find(x=>x.data?.status==='pending'&&Number(x.data?.expiresAt||0)>now()&&String(x.data?.codeHash)===h);if(found){id=found.id;r=found.data}}
+      if(!r||Number(r.expiresAt||0)<=now()||r.status!=='pending')return res.status(400).json({error:'Запрос входа устарел или код неверный'});
       if(c&&hash(c)!==String(r.codeHash))return res.status(400).json({error:'Неверный код входа'});
       await patchDoc('device_login_requests',id,{status:'approved',uid:u.id,approvedAt:now(),method:c?'code':'qr',approvedBySession:hash(String(req.headers.cookie||''))});
       res.json({ok:true});
@@ -97,9 +98,10 @@ module.exports=function installSessionAuth({app,crypto,getDoc,putDoc,patchDoc,de
       res.json({ok:true,status:'registered',id:uid});
     }catch(e){res.status(500).json({error:e.message||'Ошибка регистрации'})}
   });
-  app.post('/api/telegram/registration-hook',async(req,res)=>{
-    if(req.get('x-ekool-registration-hook')!=='1')return res.sendStatus(401);
-    res.sendStatus(200);
+  app.post('/api/telegram/webhook',async(req,res,next)=>{
+    if(telegramWebhookSecret && req.get('x-telegram-bot-api-secret-token')!==telegramWebhookSecret)return next();
+    try{if(req.body?.message && await app._ekooolRegistrationHandler(req.body.message))return res.sendStatus(200)}catch(e){console.error('EKOOOL registration hook error:',e.message)}
+    next();
   });
   app._ekooolRegistrationHandler=async(msg)=>{
     const text=String(msg?.text||'').trim(),m=text.match(/^\\/start\\s+reg_([A-Za-z0-9_-]{20,100})$/);
