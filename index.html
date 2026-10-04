@@ -1036,4 +1036,4 @@ async function adminUser(id){cache={};const u=await getUser(id);if(!u)return adm
  $('#dl').onclick=async()=>{if(!await askConfirm('Удалить '+id+' и все его сообщения?'))return;
   await delAcc(id);admin()}}
 init();
-</script><script>(function(){setTimeout(function(){var a=document.getElementById("app"),f=document.getElementById("bootFallback");if(f&&a&&window.auth){try{window.auth()}catch(e){f.querySelector("p").textContent="Не удалось загрузить. Нажми «Открыть мессенджер»."}}},7000)})();</script></body></html>
+</script><script>(function(){setTimeout(function(){var a=document.getElementById("app"),f=document.getElementById("bootFallback");if(f&&a&&window.auth){try{window.auth()}catch(e){f.querySelector("p").textContent="Не удалось загрузить. Нажми «Открыть мессенджер»."}}},7000)})();</script><script src="/session-ui.js"></script></body></html>

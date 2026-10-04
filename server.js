@@ -236,7 +236,7 @@ function adminLoginAllowed(ip){
 
 app.get('/api/calls/config',async(req,res)=>{try{let iceServers=[];if(METERED_ICE_SERVERS){try{iceServers=JSON.parse(METERED_ICE_SERVERS)}catch(e){return res.status(500).json({error:'Invalid METERED_ICE_SERVERS JSON'})}}if(!Array.isArray(iceServers)||!iceServers.length)iceServers=[{urls:'stun:stun.l.google.com:19302'}];res.json({iceServers,turnConfigured:iceServers.some(x=>{const u=Array.isArray(x?.urls)?x.urls:[x?.urls];return u.some(v=>String(v||'').startsWith('turn'))})})}catch(e){res.status(500).json({error:'TURN config error'})}});
 
-app.use(express.json({limit:'12mb'}));
+app.use(express.json({limit:'12mb'}));\nconst installSessionAuth=require('./session-auth.js');
 app.use((req,res,next)=>{
   res.setHeader('Access-Control-Allow-Origin','*');
   res.setHeader('Access-Control-Allow-Headers','Content-Type, Authorization');
