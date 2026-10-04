@@ -38,6 +38,11 @@ module.exports=function installRegistrationBot({app,crypto,getDoc,putDoc,patchDo
         const chatId=String(cb.message.chat.id),data=String(cb.data||'');
         if(data==='reg_cancel')await cancel(chatId);
         else if(data==='reg_restart')await start(chatId);
+        else if(data==='reg_confirm'){
+          const st=await getDoc('registration_bot_states',stateId(chatId));
+          if(!st||st.step!=='confirm'||Number(st.expiresAt||0)<=now())await send(chatId,'❌ Регистрация истекла. Отправь /start и начни заново.',keyboard.restart);
+          else await finish(chatId,st);
+        }
         await tgFetch(token,'answerCallbackQuery',{callback_query_id:cb.id});
         return;
       }
@@ -73,15 +78,6 @@ module.exports=function installRegistrationBot({app,crypto,getDoc,putDoc,patchDo
   app.post('/api/telegram/registration-confirm',async(req,res)=>{
     res.sendStatus(404);
   });
-
-  const oldHandler=app._ekooolRegistrationBotConfirm;
-  app._ekooolRegistrationBotConfirm=async(cb)=>{
-    const chatId=String(cb.message?.chat?.id||'');
-    if(!chatId||cb.data!=='reg_confirm')return false;
-    const st=await getDoc('registration_bot_states',stateId(chatId));
-    if(!st||st.step!=='confirm'||Number(st.expiresAt||0)<=now()){await send(chatId,'❌ Регистрация истекла. Отправь /start и начни заново.',keyboard.restart);return true;}
-    await finish(chatId,st);return true;
-  };
 
   (async()=>{try{
     await tgFetch(token,'setWebhook',{url:webhookUrl,secret_token:webhookSecret||undefined,drop_pending_updates:false});
