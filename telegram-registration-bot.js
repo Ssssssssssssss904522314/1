@@ -23,7 +23,7 @@ module.exports=function installRegistrationBot({app,crypto,getDoc,putDoc,patchDo
     if(duplicate)return send(chatId,'⚠️ Этот Telegram уже связан с аккаунтом EKOOOL.\n\nЮзернейм: @'+String(duplicate.data?.username||''));
     const salt=crypto.randomBytes(16).toString('hex');
     const uid=makeId();
-    const user={name:state.name,photo:'',bio:'',verified:false,purchased:false,coins:1000,username:state.username,extra:[],salt,passHash:hashPassword(state.password,salt),lastSeen:now(),ts:now(),telegramChatId:String(chatId),telegramUsername:String(state.telegramUsername||'')};
+    const user={name:state.name,photo:'',bio:'',verified:false,purchased:false,coins:1000,username:state.username,extra:[],salt:state.salt||salt,passHash:state.passHash||hashPassword(state.password||'',state.salt||salt),lastSeen:now(),ts:now(),telegramChatId:String(chatId),telegramUsername:String(state.telegramUsername||'')};
     await putDoc('users',uid,user);
     await putDoc('usernames',state.username,{uid});
     await patchDoc('registration_bot_states',stateId(chatId),{step:'done',uid,completedAt:now(),expiresAt:now()+24*60*60*1000});
