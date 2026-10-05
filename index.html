@@ -513,7 +513,7 @@ async function secretModal(oid,onDone){
 let activeCall=null,callGlobalUnsub=null;
 const CALL_ICE_FALLBACK={iceServers:[{urls:'stun:stun.l.google.com:19302'}]};
 let CALL_ICE=null;
-async function loadCallIce(){if(CALL_ICE)return CALL_ICE;try{const r=await api('/api/calls/config');const d=await r.json();if(r.ok&&Array.isArray(d.iceServers)&&d.iceServers.length){CALL_ICE={iceServers:d.iceServers};return CALL_ICE}}catch(e){}CALL_ICE=CALL_ICE_FALLBACK;return CALL_ICE}
+async function loadCallIce(){if(CALL_ICE)return CALL_ICE;try{const d=await api('/api/calls/config');if(Array.isArray(d.iceServers)&&d.iceServers.length){CALL_ICE={iceServers:d.iceServers};return CALL_ICE}}catch(e){}CALL_ICE=CALL_ICE_FALLBACK;return CALL_ICE}
 function callId(){return 'call_'+Date.now().toString(36)+'_'+Math.random().toString(36).slice(2,9)}
 function callDocId(id){return 'calls/'+id}
 function callCandidateId(id){return 'cc_'+id+'_'+me.id+'_'+Date.now().toString(36)+'_'+Math.random().toString(36).slice(2,7)}
