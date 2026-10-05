@@ -80,7 +80,7 @@ function approveHash(){
   if(window.me){approveDevice(m[1],'')}else{setTimeout(approveHash,800)}
 }
 window.ekooolDeviceLogin=deviceLogin;
-snow();setTimeout(()=>{approveHash();if(!window.me&&document.querySelector('#app'))auth()},300);
+snow();setTimeout(()=>{approveHash()},300);
 })();
 
 
@@ -93,7 +93,7 @@ snow();setTimeout(()=>{approveHash();if(!window.me&&document.querySelector('#app
       setTimeout(()=>{
         const tx=document.querySelector('#tx');
         if(tx){
-          const key='EKOOOL_DRAFT_'+(window.me?.id||'guest')+'_'+oid;
+          const key='EKOOOL_DRAFT_'+(localStorage.getItem('ekid')||'guest')+'_'+oid;
           const saved=localStorage.getItem(key)||'';
           if(saved&&!tx.value)tx.value=saved;
           let timer=null;
