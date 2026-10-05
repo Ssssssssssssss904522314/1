@@ -28,9 +28,20 @@ module.exports=function installSessionAuth({app,crypto,getDoc,putDoc,patchDoc,de
       if(Number(r.expiresAt||0)<=now()&&r.status==='pending'){await patchDoc('device_login_requests',id,{status:'expired'});return res.json({ok:true,status:'expired'})}
       if(r.status!=='approved')return res.json({ok:true,status:r.status,expiresAt:r.expiresAt});
       const u=await getDoc('users',String(r.uid));if(!u||!u.passHash)return res.status(404).json({error:'Аккаунт не найден'});
-      const token=await createSession(String(r.uid),{device:r.device,city:r.city,loginMethod:r.method||'qr'});
+      const loginMethod=r.method||'qr';
+      const token=await createSession(String(r.uid),{device:r.device,city:r.city,loginMethod});
       await patchDoc('device_login_requests',id,{status:'consumed',consumedAt:now()});
       setSessionCookie(res,token);
+      try{
+        if(u.telegramChatId&&sendTelegramBotMessage){
+          const label=loginMethod==='code'?'кодом':'по QR-коду';
+          await sendTelegramBotMessage(
+            telegramBotToken,
+            u.telegramChatId,
+            '🔐 Новый вход в EKOOOL '+label+'.\\n\\n📱 Устройство: '+String(r.device||'Неизвестное устройство')+'\\n📍 Город: '+String(r.city||'Город не определён')+'\\n🕒 Время: '+new Date().toLocaleString('ru-RU')+'\\n\\nЕсли это были не вы — завершите эту сессию в Настройки → Активные сессии.'
+          );
+        }
+      }catch(_){}
       res.json({ok:true,status:'logged_in',id:String(r.uid)});
     }catch(e){res.status(500).json({error:e.message||'Ошибка проверки входа'})}
   });
