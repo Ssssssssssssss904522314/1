@@ -82,3 +82,81 @@ function approveHash(){
 window.ekooolDeviceLogin=deviceLogin;
 snow();setTimeout(()=>{approveHash();if(!window.me&&document.querySelector('#app'))auth()},300);
 })();
+
+
+// ---- UX polish layer ----
+(()=>{
+  const originalChat=window.chat;
+  if(typeof originalChat==='function'){
+    window.chat=async function(oid){
+      const result=await originalChat(oid);
+      setTimeout(()=>{
+        const tx=document.querySelector('#tx');
+        if(tx){
+          const key='EKOOOL_DRAFT_'+(window.me?.id||'guest')+'_'+oid;
+          const saved=localStorage.getItem(key)||'';
+          if(saved&&!tx.value)tx.value=saved;
+          let timer=null;
+          tx.addEventListener('input',()=>{
+            clearTimeout(timer);
+            timer=setTimeout(()=>{
+              const value=tx.value.trim();
+              if(value)localStorage.setItem(key,value);
+              else localStorage.removeItem(key);
+            },180);
+          });
+          const send=document.querySelector('#sd');
+          if(send)send.addEventListener('click',()=>setTimeout(()=>localStorage.removeItem(key),0));
+        }
+        const box=document.querySelector('#ms');
+        if(box&&!box.dataset.ekooolUx){
+          box.dataset.ekooolUx='1';
+          const markEdited=()=>{
+            box.querySelectorAll('[data-mid]').forEach(el=>{
+              const m=window.M?.[el.dataset.mid];
+              if(!m?.edited||m.deleted||el.querySelector('.eko-edited'))return;
+              const small=el.querySelector('small');
+              if(small){
+                const tag=document.createElement('span');
+                tag.className='eko-edited';
+                tag.textContent=' · изменено';
+                tag.style.opacity='.55';
+                tag.style.fontSize='10px';
+                small.appendChild(tag);
+              }
+            });
+          };
+          new MutationObserver(markEdited).observe(box,{childList:true,subtree:true});
+          markEdited();
+        }
+      },0);
+      return result;
+    };
+  }
+
+  const originalDeviceLogin=window.ekooolDeviceLogin;
+  if(typeof originalDeviceLogin==='function'){
+    window.ekooolDeviceLogin=async function(){
+      const result=await originalDeviceLogin();
+      setTimeout(()=>{
+        const title=[...document.querySelectorAll('h1')].find(x=>x.textContent.trim()==='Вход по QR');
+        if(title&&!document.querySelector('#ekoCopyQrCode')){
+          const codeBox=title.parentElement?.querySelector('div[style*="font-size:30px"]');
+          if(codeBox){
+            const b=document.createElement('button');
+            b.id='ekoCopyQrCode';
+            b.className='ib';
+            b.style.cssText='width:100%;margin-top:8px';
+            b.textContent='📋 Скопировать код';
+            b.onclick=async()=>{
+              try{await navigator.clipboard.writeText(codeBox.textContent.trim());toast?.('Код скопирован ✓')}
+              catch(e){alert('Код: '+codeBox.textContent.trim())}
+            };
+            codeBox.parentElement.appendChild(b);
+          }
+        }
+      },30);
+      return result;
+    };
+  }
+})();
