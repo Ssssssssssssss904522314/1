@@ -77,7 +77,7 @@ window.settings=async function(){
 };
 function approveHash(){
   const m=location.hash.match(/^#device-approve\/([A-Za-z0-9_-]{20,100})$/);if(!m)return;
-  if(window.me){approveDevice(m[1],'')}else{setTimeout(approveHash,800)}
+  approveDevice(m[1],'')
 }
 window.ekooolDeviceLogin=deviceLogin;
 snow();setTimeout(()=>{approveHash()},300);
