@@ -129,10 +129,36 @@ async function deleteDoc(c,id){
   if(!pool){delete fileCol(c)[id];await persistFile();return}
   await pool.query('DELETE FROM ekoool_kv WHERE collection=$1 AND id=$2',[c,id]);
 }
+function legacyVerificationApplicationNumber(gid,g){
+  const base=String(g?.channelVerificationApplicationNumber||'').trim();
+  if(/^EV-\\d{8}$/.test(base))return base;
+  const source=String(gid||'')+'|'+String(g?.channelVerifiedAt||g?.channelVerificationRequestedAt||'');
+  const hex=crypto.createHash('sha256').update(source).digest('hex');
+  const n=Number.parseInt(hex.slice(0,10),16)%100000000;
+  return 'EV-'+String(n).padStart(8,'0');
+}
+async function backfillVerifiedGroupNumbers(docs){
+  if(!Array.isArray(docs))return docs;
+  for(const item of docs){
+    const g=item?.data;
+    if(!g||g.channelVerified!==true||g.channelVerificationApplicationNumber)continue;
+    const applicationNumber=legacyVerificationApplicationNumber(item.id,g);
+    try{
+      await patchDoc('groups',String(item.id),{channelVerificationApplicationNumber:applicationNumber});
+      g.channelVerificationApplicationNumber=applicationNumber;
+    }catch(e){}
+  }
+  return docs;
+}
 async function getCollection(c){
-  if(!pool)return Object.entries(fileCol(c)).map(([id,data])=>({id,data}));
-  const r=await pool.query('SELECT id,data FROM ekoool_kv WHERE collection=$1',[c]);
-  return r.rows.map(x=>({id:x.id,data:x.data}));
+  let docs;
+  if(!pool)docs=Object.entries(fileCol(c)).map(([id,data])=>({id,data}));
+  else{
+    const r=await pool.query('SELECT id,data FROM ekoool_kv WHERE collection=$1',[c]);
+    docs=r.rows.map(x=>({id:x.id,data:x.data}));
+  }
+  if(c==='groups')await backfillVerifiedGroupNumbers(docs);
+  return docs;
 }
 
 const SESSION_COOKIE='__Host-EKOOOL-SESSION';
