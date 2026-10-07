@@ -12,7 +12,7 @@ async function load(){
  if(!r.ok){status.innerHTML='<span class="err">'+esc(x.error||'ошибка загрузки')+'</span>';return}
  channel.innerHTML='<b>'+(x.channel.type==='group'?'👥 ':'📢 ')+esc(x.channel.name)+'</b><div class="muted">код: '+esc(x.channel.id)+'</div><div style="margin-top:12px"><b>заявка от имени:</b> '+esc(x.account.username?'@'+x.account.username:x.account.name||x.account.id)+'</div><div style="margin-top:12px"><input id="cu" class="btn" style="background:#ffffff12;color:#fff;text-align:left;font-weight:500" maxlength="33" placeholder="@username '+(x.channel.type==='group'?'группы':'канала')+'" value="'+esc(x.channel.username?'@'+x.channel.username:'')+'"></div>';
  if(x.channel.verified){status.innerHTML='<span class="ok">✓ канал уже подтверждён</span>';return}
- if(x.channel.requested){submit.style.display='none';status.innerHTML='<span class="warn">⏳ заявка уже отправлена. ожидайте проверки администратора.</span>';return}
+ if(x.channel.requested){submit.style.display='none';status.innerHTML='<span class="warn">⏳ заявка уже отправлена. ожидайте проверки администратора.<br><br><b>номер заявления:</b> '+esc(x.channel.applicationNumber||'—')+'</span>';return}
  if(x.channel.status==='rejected'&&x.channel.rejectionReason)status.innerHTML='<span class="err">❌ предыдущая заявка отклонена.<br><br><b>причина:</b> '+esc(x.channel.rejectionReason)+'</span>';
  else status.textContent='укажите @username канала и отправьте заявку на проверку';
  submit.style.display='block';
@@ -23,7 +23,7 @@ submit.onclick=async()=>{
  submit.disabled=true;
  const r=await fetch('/api/channel-verification/'+encodeURIComponent(gid),{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({channelUsername})});
  const x=await r.json().catch(()=>({}));
- if(r.ok){submit.style.display='none';status.innerHTML='<span class="ok">✓ заявка отправлена. теперь её проверит администратор.</span>'}
+ if(r.ok){submit.style.display='none';status.innerHTML='<span class="ok">✓ заявка отправлена. теперь её проверит администратор.<br><br><b>номер заявления:</b> '+esc(x.applicationNumber||'—')+'</span>'}
  else{status.innerHTML='<span class="err">'+esc(x.error||'не удалось отправить заявку')+'</span>';submit.disabled=false}
 };
 load();
