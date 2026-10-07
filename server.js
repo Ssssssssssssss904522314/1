@@ -2074,6 +2074,10 @@ app.get('/api/health',async(req,res)=>{
   }catch(e){res.status(500).json({ok:false,error:e.message})}
 });
 
+
+// ---- channel ownership verification ----
+app.get('/api/channel-verification/:gid',async(req,res)=>{try{const u=await sessionAuth(req);if(!u)return res.status(401).json({error:'Требуется вход в EKOOOL'});const gid=String(req.params.gid||'');const g=await getDoc('groups',gid);if(!g||g.channel!==true)return res.status(404).json({error:'Канал не найден'});if(String(g.owner)!==String(u.id))return res.status(403).json({error:'Вы не являетесь владельцем этого канала'});res.json({ok:true,channel:{id:gid,name:g.name||'',verified:g.channelVerified===true,requested:g.channelVerificationRequested===true,verifiedAt:g.channelVerifiedAt||null}})}catch(e){res.status(500).json({error:'Ошибка сервера'})}});
+app.post('/api/channel-verification/:gid',async(req,res)=>{try{const u=await sessionAuth(req);if(!u)return res.status(401).json({error:'Требуется вход в EKOOOL'});const gid=String(req.params.gid||'');const g=await getDoc('groups',gid);if(!g||g.channel!==true)return res.status(404).json({error:'Канал не найден'});if(String(g.owner)!==String(u.id))return res.status(403).json({error:'Вы не являетесь владельцем этого канала'});if(g.channelVerified===true)return res.json({ok:true,status:'verified'});await patchDoc('groups',gid,{channelVerificationRequested:true,channelVerificationRequestedBy:String(u.id),channelVerificationRequestedAt:Date.now(),channelVerificationStatus:'pending'});res.json({ok:true,status:'pending'})}catch(e){res.status(500).json({error:'Ошибка сервера'})}});
 app.use(express.static(__dirname,{index:'index.html'}));
 app.get('*',(req,res)=>res.sendFile(path.join(__dirname,'index.html')));
 
