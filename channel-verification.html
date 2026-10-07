@@ -5,7 +5,26 @@
 <script>
 const gid=new URLSearchParams(location.search).get('gid'),channel=document.getElementById('channel'),submit=document.getElementById('submit'),status=document.getElementById('status');
 function esc(v){return String(v||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
-async function load(){if(!gid){status.innerHTML='<span class="err">не указан канал</span>';return}const r=await fetch('/api/channel-verification/'+encodeURIComponent(gid));const x=await r.json().catch(()=>({}));if(!r.ok){status.innerHTML='<span class="err">'+esc(x.error||'ошибка загрузки')+'</span>';return}channel.innerHTML='<b>📢 '+esc(x.channel.name)+'</b><div class="muted">код: '+esc(x.channel.id)+'</div>';if(x.channel.verified){status.innerHTML='<span class="ok">✓ канал уже подтверждён</span>'}else if(x.channel.requested){status.innerHTML='<span class="warn">⏳ заявка уже отправлена. ожидайте проверки администратора.</span>'}else{submit.style.display='block';status.textContent='нажмите кнопку, чтобы отправить канал на проверку'}};
-submit.onclick=async()=>{submit.disabled=true;const r=await fetch('/api/channel-verification/'+encodeURIComponent(gid),{method:'POST',headers:{'content-type':'application/json'},body:'{}'});const x=await r.json().catch(()=>({}));if(r.ok){submit.style.display='none';status.innerHTML='<span class="ok">✓ заявка отправлена. теперь её проверит администратор.</span>'}else{status.innerHTML='<span class="err">'+esc(x.error||'не удалось отправить заявку')+'</span>';submit.disabled=false}};
+async function load(){
+ if(!gid){status.innerHTML='<span class="err">не указан канал</span>';return}
+ const r=await fetch('/api/channel-verification/'+encodeURIComponent(gid));
+ const x=await r.json().catch(()=>({}));
+ if(!r.ok){status.innerHTML='<span class="err">'+esc(x.error||'ошибка загрузки')+'</span>';return}
+ channel.innerHTML='<b>📢 '+esc(x.channel.name)+'</b><div class="muted">код: '+esc(x.channel.id)+'</div><div style="margin-top:12px"><b>заявка от имени:</b> '+esc(x.account.username?'@'+x.account.username:x.account.name||x.account.id)+'</div><div style="margin-top:12px"><input id="cu" class="btn" style="background:#ffffff12;color:#fff;text-align:left;font-weight:500" maxlength="33" placeholder="@username канала" value="'+esc(x.channel.username?'@'+x.channel.username:'')+'"></div>';
+ if(x.channel.verified){status.innerHTML='<span class="ok">✓ канал уже подтверждён</span>';return}
+ if(x.channel.requested){submit.style.display='none';status.innerHTML='<span class="warn">⏳ заявка уже отправлена. ожидайте проверки администратора.</span>';return}
+ if(x.channel.status==='rejected'&&x.channel.rejectionReason)status.innerHTML='<span class="err">❌ предыдущая заявка отклонена.<br><br><b>причина:</b> '+esc(x.channel.rejectionReason)+'</span>';
+ else status.textContent='укажите @username канала и отправьте заявку на проверку';
+ submit.style.display='block';
+}
+submit.onclick=async()=>{
+ const input=document.getElementById('cu'),channelUsername=(input?.value||'').trim();
+ if(!channelUsername)return alert('укажите @username канала');
+ submit.disabled=true;
+ const r=await fetch('/api/channel-verification/'+encodeURIComponent(gid),{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({channelUsername})});
+ const x=await r.json().catch(()=>({}));
+ if(r.ok){submit.style.display='none';status.innerHTML='<span class="ok">✓ заявка отправлена. теперь её проверит администратор.</span>'}
+ else{status.innerHTML='<span class="err">'+esc(x.error||'не удалось отправить заявку')+'</span>';submit.disabled=false}
+};
 load();
 </script></body></html>
