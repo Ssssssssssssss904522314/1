@@ -596,8 +596,9 @@ function acctButton(){
 }
 // ---- home ----
 function home(){clean();
- app.innerHTML=`<div class="top">${acctButton()}<div class="home-search" style="flex:1"><span>⌕</span><input id="hs" placeholder="Поиск" autocomplete="off"></div></div><div class="body" id="ls">${pinAll([])}<p class="c" style="color:var(--mut)">Чатов пока нет. Найдите пользователя через поиск выше.</p></div>${nav('chats')}`;
+ app.innerHTML=`<div class="top">${acctButton()}<div class="home-search" style="flex:1"><span>⌕</span><input id="hs" placeholder="Поиск" autocomplete="off"></div><button class="ib create-chat-btn" id="createChatBtn" title="Создать группу или канал">＋ создать</button></div><div class="body" id="ls">${pinAll([])}<p class="c" style="color:var(--mut)">Чатов пока нет. Найдите пользователя через поиск выше.</p></div>${nav('chats')}`;
  bindNav();
+ $('#createChatBtn').onclick=addChat;
  const seen={};let myG=[];let allUsers=[];let allUsersAt=0;let searchTimer=0;
  const draw=async()=>{const arr=Object.values(seen).sort((a,b)=>b.ts-a.ts);
   const rows=await Promise.all(arr.map(async m=>{if(m.anon)return`<div class="row" data-id="anon"><div class="av">🎁</div><div><div class="n">Анонимные подарки</div><div class="s">🎭 Подарок от неизвестного</div></div></div>`;const o=m.a===me.id?m.b:m.a,u=await getUser(o)||{name:o};
