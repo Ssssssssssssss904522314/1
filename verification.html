@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Заявление на верификацию — EKOOOL</title>
+<style>
+*{box-sizing:border-box}body{margin:0;min-height:100vh;background:linear-gradient(135deg,#f7f8fb,#eef1f7);font-family:Inter,Arial,sans-serif;color:#182033;display:flex;align-items:center;justify-content:center;padding:20px}.card{width:min(94vw,520px);background:#fff;border:1px solid #e5e7eb;border-radius:26px;padding:28px;box-shadow:0 18px 55px #1f29371a}.brand{font-size:28px;font-weight:900;letter-spacing:-1px}.muted{color:#667085}.hero{text-align:center;padding:20px 0 14px}.avatar{width:104px;height:104px;border-radius:28px;object-fit:cover;background:#eef1f7;display:inline-flex;align-items:center;justify-content:center;font-size:42px;font-weight:800;color:#5865f2;overflow:hidden}.avatar img{width:100%;height:100%;object-fit:cover}.name{font-size:24px;font-weight:850;margin-top:12px}.row{display:flex;justify-content:space-between;gap:16px;padding:14px 0;border-top:1px solid #edf0f4}.label{color:#7b8494}.value{font-weight:750;text-align:right;overflow-wrap:anywhere}.number{font-size:20px;color:#5865f2}.ok{margin-top:18px;padding:12px 14px;border-radius:14px;background:#e9f9ef;color:#168544;text-align:center;font-weight:750}.err{color:#d92d20;text-align:center;padding:25px}.back{display:inline-block;margin-top:18px;color:#5865f2;text-decoration:none;font-weight:700}
+</style></head><body><main class="card"><div class="brand">EKOOOL</div><div id="app"><div class="hero muted">загрузка заявления…</div></div></main>
+<script>
+const esc=v=>String(v||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const app=document.getElementById('app'),number=new URLSearchParams(location.search).get('application');
+async function load(){
+ if(!number){app.innerHTML='<div class="err">не указан номер заявления</div>';return}
+ const r=await fetch('/api/verification-application/'+encodeURIComponent(number)),x=await r.json().catch(()=>({}));
+ if(!r.ok){app.innerHTML='<div class="err">❌ '+esc(x.error||'заявление не найдено')+'<br><a class="back" href="/">вернуться в EKOOOL</a></div>';return}
+ const initial=esc((x.channel.name||'?')[0].toUpperCase());
+ const avatar=x.channel.photo?'<img src="'+esc(x.channel.photo)+'" alt="">':initial;
+ app.innerHTML='<div class="hero"><div class="avatar">'+avatar+'</div><div class="name">'+esc(x.channel.name)+'</div><div class="muted">'+(x.channel.type==='канал'?'📢 канал':'👥 группа')+'</div></div><div class="row"><span class="label">номер заявления</span><span class="value number">'+esc(x.applicationNumber)+'</span></div><div class="row"><span class="label">@username канала</span><span class="value">'+(x.channel.username?'@'+esc(x.channel.username):'не указан')+'</span></div><div class="row"><span class="label">владелец</span><span class="value">'+(x.owner.username?'@'+esc(x.owner.username):esc(x.owner.name||'не указан'))+'</span></div><div class="ok">✓ верификация EKOOOL подтверждена</div><a class="back" href="/">← вернуться в EKOOOL</a>';
+}
+load();
+</script></body></html>
