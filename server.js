@@ -866,6 +866,7 @@ app.get('/api/collection/:collection',async(req,res)=>{
       if(restricted&&!isAdmin(req))docs=docs.filter(d=>d.data?.a===u.id||d.data?.b===u.id||d.data?.uid===u.id);
       for(const f of parsed)docs=docs.filter(d=>{const got=d.data?.[f.key];return f.op==='=='?got===f.value:f.op==='!='?got!==f.value:true});
     }
+    if(c==='groups')await backfillVerifiedGroupNumbers(docs);
     res.json({docs});
   }catch(e){console.error('collection query failed:',e.message);res.status(500).json({error:e.message})}
 });
