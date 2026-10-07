@@ -1,7 +1,7 @@
 <!doctype html>
-<html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Подтверждение канала — EKOOOL</title>
+<html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Подтверждение — EKOOOL</title>
 <style>:root{color-scheme:dark}*{box-sizing:border-box}body{margin:0;min-height:100vh;background:linear-gradient(135deg,#0d1117,#151a22);font-family:Inter,Arial,sans-serif;color:#fff;display:flex;align-items:center;justify-content:center;padding:20px}.card{width:min(94vw,480px);background:#ffffff0d;border:1px solid #ffffff18;border-radius:26px;padding:28px;box-shadow:0 20px 60px #0006;backdrop-filter:blur(18px)}.logo{font-size:34px;font-weight:900}.muted{color:#aab2bf;line-height:1.55}.channel{margin:20px 0;padding:15px;border-radius:17px;background:#ffffff09}.btn{width:100%;border:0;border-radius:15px;padding:14px 16px;background:#fff;color:#111;font-weight:800;font-size:16px;cursor:pointer}.status{margin-top:14px;padding:13px;border-radius:14px;background:#ffffff09}.ok{color:#5ee28a}.warn{color:#ffd166}.err{color:#ff7777}</style></head>
-<body><main class="card"><div class="logo">EKOOOL</div><h1>подтверждение канала</h1><p class="muted">эта страница нужна, чтобы подтвердить, что канал принадлежит именно вам. после отправки заявка попадёт в админ-панель EKOOOL.</p><div id="channel" class="channel">загрузка…</div><button id="submit" class="btn" style="display:none">подтвердить и отправить заявку</button><div id="status" class="status muted"></div></main>
+<body><main class="card"><div class="logo">EKOOOL</div><h1>подтверждение</h1><p class="muted">эта страница нужна, чтобы подтвердить, что группа или канал принадлежит именно вам. после отправки заявка попадёт в админ-панель EKOOOL.</p><div id="channel" class="channel">загрузка…</div><button id="submit" class="btn" style="display:none">подтвердить и отправить заявку</button><div id="status" class="status muted"></div></main>
 <script>
 const gid=new URLSearchParams(location.search).get('gid'),channel=document.getElementById('channel'),submit=document.getElementById('submit'),status=document.getElementById('status');
 function esc(v){return String(v||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
@@ -10,7 +10,7 @@ async function load(){
  const r=await fetch('/api/channel-verification/'+encodeURIComponent(gid));
  const x=await r.json().catch(()=>({}));
  if(!r.ok){status.innerHTML='<span class="err">'+esc(x.error||'ошибка загрузки')+'</span>';return}
- channel.innerHTML='<b>📢 '+esc(x.channel.name)+'</b><div class="muted">код: '+esc(x.channel.id)+'</div><div style="margin-top:12px"><b>заявка от имени:</b> '+esc(x.account.username?'@'+x.account.username:x.account.name||x.account.id)+'</div><div style="margin-top:12px"><input id="cu" class="btn" style="background:#ffffff12;color:#fff;text-align:left;font-weight:500" maxlength="33" placeholder="@username канала" value="'+esc(x.channel.username?'@'+x.channel.username:'')+'"></div>';
+ channel.innerHTML='<b>'+(x.channel.type==='group'?'👥 ':'📢 ')+esc(x.channel.name)+'</b><div class="muted">код: '+esc(x.channel.id)+'</div><div style="margin-top:12px"><b>заявка от имени:</b> '+esc(x.account.username?'@'+x.account.username:x.account.name||x.account.id)+'</div><div style="margin-top:12px"><input id="cu" class="btn" style="background:#ffffff12;color:#fff;text-align:left;font-weight:500" maxlength="33" placeholder="@username '+(x.channel.type==='group'?'группы':'канала')+'" value="'+esc(x.channel.username?'@'+x.channel.username:'')+'"></div><div style="margin-top:10px"><input id="site" class="btn" style="background:#ffffff12;color:#fff;text-align:left;font-weight:500" maxlength="200" placeholder="сайт проекта, например https://example.com" value="'+esc(x.channel.website||'')+'"></div>';
  if(x.channel.verified){status.innerHTML='<span class="ok">✓ канал уже подтверждён</span>';return}
  if(x.channel.requested){submit.style.display='none';status.innerHTML='<span class="warn">⏳ заявка уже отправлена. ожидайте проверки администратора.</span>';return}
  if(x.channel.status==='rejected'&&x.channel.rejectionReason)status.innerHTML='<span class="err">❌ предыдущая заявка отклонена.<br><br><b>причина:</b> '+esc(x.channel.rejectionReason)+'</span>';
@@ -19,9 +19,10 @@ async function load(){
 }
 submit.onclick=async()=>{
  const input=document.getElementById('cu'),channelUsername=(input?.value||'').trim();
- if(!channelUsername)return alert('укажите @username канала');
+ if(!channelUsername)return alert('укажите @username группы или канала');
+ const website=(document.getElementById('site')?.value||'').trim();if(!/^https?:\/\//i.test(website))return alert('укажите сайт с http:// или https://');
  submit.disabled=true;
- const r=await fetch('/api/channel-verification/'+encodeURIComponent(gid),{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({channelUsername})});
+ const r=await fetch('/api/channel-verification/'+encodeURIComponent(gid),{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({channelUsername,website})});
  const x=await r.json().catch(()=>({}));
  if(r.ok){submit.style.display='none';status.innerHTML='<span class="ok">✓ заявка отправлена. теперь её проверит администратор.</span>'}
  else{status.innerHTML='<span class="err">'+esc(x.error||'не удалось отправить заявку')+'</span>';submit.disabled=false}
