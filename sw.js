@@ -1,4 +1,4 @@
-const CACHE='ekool-v1';
+const CACHE='ekool-v2';
 const CORE=['/','/index.html','/manifest.json','/icon.svg'];
 self.addEventListener('install',e=>{e.waitUntil(caches.open(CACHE).then(c=>c.addAll(CORE)).then(()=>self.skipWaiting()))});
 self.addEventListener('activate',e=>{e.waitUntil(self.clients.claim())});
