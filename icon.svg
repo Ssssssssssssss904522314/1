@@ -1,1 +1,35 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#3b6cff"/><stop offset="1" stop-color="#7c3aed"/></linearGradient></defs><rect width="512" height="512" rx="112" fill="url(#g)"/><path d="M112 132c0-24 20-44 44-44h200c24 0 44 20 44 44v172c0 24-20 44-44 44H258l-70 66v-66h-32c-24 0-44-20-44-44z" fill="white" opacity=".97"/><path d="M185 190h142M185 248h92" stroke="#3b6cff" stroke-width="30" stroke-linecap="round"/><path d="M256 120l12 22 25 4-18 18 4 25-23-12-23 12 4-25-18-18 25-4z" fill="#facc15"/></svg>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+<defs>
+ <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#18083e"/><stop offset=".52" stop-color="#6624d8"/><stop offset="1" stop-color="#b46aff"/></linearGradient>
+ <radialGradient id="glow"><stop stop-color="#fff" stop-opacity=".95"/><stop offset=".35" stop-color="#e7caff" stop-opacity=".65"/><stop offset="1" stop-color="#9d4dff" stop-opacity="0"/></radialGradient>
+ <linearGradient id="hair" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#fff"/><stop offset=".55" stop-color="#eee1ff"/><stop offset="1" stop-color="#b77cff"/></linearGradient>
+ <filter id="blur"><feGaussianBlur stdDeviation="13"/></filter>
+</defs>
+<rect width="512" height="512" rx="112" fill="url(#bg)"/>
+<circle cx="255" cy="240" r="205" fill="url(#glow)"/>
+<g fill="#fff" opacity=".92">
+ <circle cx="88" cy="105" r="2.8"/><circle cx="137" cy="76" r="2"/><circle cx="411" cy="121" r="3"/><circle cx="443" cy="214" r="2"/><circle cx="77" cy="288" r="2.5"/><circle cx="386" cy="366" r="2"/><circle cx="144" cy="411" r="3"/><circle cx="324" cy="66" r="1.8"/><circle cx="462" cy="307" r="2.5"/><circle cx="65" cy="199" r="1.8"/>
+ <path d="M104 154l6 14 14 6-14 6-6 14-6-14-14-6 14-6z"/><path d="M401 80l5 12 12 5-12 5-5 12-5-12-12-5 12-5z"/><path d="M419 337l4 10 10 4-10 4-4 10-4-10-10-4 10-4z"/>
+</g>
+<circle cx="256" cy="218" r="139" fill="none" stroke="#f4e8ff" stroke-width="3" opacity=".8"/>
+<circle cx="256" cy="218" r="151" fill="none" stroke="#cda1ff" stroke-width="1.5" opacity=".5"/>
+<ellipse cx="257" cy="279" rx="103" ry="154" fill="#d8b6ff" opacity=".35" filter="url(#blur)"/>
+<!-- flowing luminous hair -->
+<path d="M251 117c-73 1-111 55-112 121-1 67-41 116-82 151 62-12 109-45 142-92-9 47-31 83-65 113 63-20 110-65 127-128 17 50 45 83 88 107-25-38-29-72-16-111 17-53 5-112-25-139-15-14-34-22-57-22z" fill="url(#hair)" opacity=".95"/>
+<!-- face and neck -->
+<path d="M226 154c-28 18-39 48-32 80 5 24 22 45 43 49 26 4 50-25 53-57 4-34-15-69-42-76-8-2-15 0-22 4z" fill="#fff5ff"/>
+<path d="M210 219c7-5 14-5 20 0" stroke="#9c5be8" stroke-width="4" stroke-linecap="round" fill="none"/>
+<path d="M243 220c6-4 12-3 17 1" stroke="#9c5be8" stroke-width="4" stroke-linecap="round" fill="none"/>
+<path d="M225 241c8 5 17 5 25-1" stroke="#d18bff" stroke-width="3" stroke-linecap="round" fill="none"/>
+<!-- long front locks -->
+<path d="M218 132c-45 17-67 63-61 111 4 35-8 67-29 93 38-21 62-54 67-96 3-28 15-47 32-63z" fill="#fff" opacity=".95"/>
+<path d="M264 130c48 18 69 61 63 110-4 37 10 68 33 92-40-20-65-54-71-96-4-29-15-47-32-63z" fill="#d8b6ff" opacity=".95"/>
+<!-- gown -->
+<path d="M222 276c-33 15-53 48-60 91l-48 85c53 12 106 16 143 13 41 3 91-3 140-17l-52-81c-8-44-29-76-62-91-17 18-41 18-61 0z" fill="url(#hair)" opacity=".92"/>
+<path d="M182 335c-17 38-25 72-31 111M287 332c19 34 29 73 36 119" fill="none" stroke="#fff" stroke-width="4" opacity=".8"/>
+<!-- star-ring emblem -->
+<circle cx="256" cy="391" r="47" fill="#3a126f" fill-opacity=".56" stroke="#e8c9ff" stroke-width="3"/>
+<ellipse cx="256" cy="391" rx="70" ry="24" transform="rotate(-25 256 391)" fill="none" stroke="#fff" stroke-width="5" opacity=".95"/>
+<path d="M256 345l11 32 32 14-32 10-11 33-11-33-32-10 32-14z" fill="#fff" stroke="#e6c6ff" stroke-width="2"/>
+<g fill="#fff"><path d="M348 178l6 15 15 6-15 6-6 15-6-15-15-6 15-6z"/><path d="M139 326l4 10 10 4-10 4-4 10-4-10-10-4 10-4z"/></g>
+</svg>
