@@ -216,7 +216,35 @@ body:before,body:after{animation-duration:20s;animation-timing-function:cubic-be
 
 .ug-market-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
 @media(max-width:420px){.ug-market-grid{grid-template-columns:1fr}}
- .eplus-badge{display:inline-flex;align-items:center;justify-content:center;gap:3px;margin-left:5px;padding:2px 6px;border-radius:7px;background:#18a957;color:#fff;font-size:11px;font-weight:800;cursor:pointer;vertical-align:middle}.eplus-badge:hover{filter:brightness(1.08)}.eplus-number{display:inline-flex;align-items:center;padding:1px 4px;border-radius:5px;background:#ffffff2b;color:#fff;text-decoration:underline;cursor:pointer}.eplus-number:hover{background:#ffffff40}</style></style></head><body><div id="app"><div id="bootFallback" style="height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:30px;text-align:center"><div style="font-size:42px;margin-bottom:12px">💬</div><h1 style="margin:0 0 8px;color:var(--pr)">EKOOOL</h1><p style="margin:0 0 18px;color:var(--mut)">Мессенджер загружается…</p><button onclick="if(window.auth){window.auth()}else{location.reload()}" style="border:0;border-radius:12px;padding:11px 22px;background:var(--pr);color:#fff;cursor:pointer">Открыть мессенджер</button></div></div>
+ .eplus-badge{display:inline-flex;align-items:center;justify-content:center;gap:3px;margin-left:5px;padding:2px 6px;border-radius:7px;background:#18a957;color:#fff;font-size:11px;font-weight:800;cursor:pointer;vertical-align:middle}.eplus-badge:hover{filter:brightness(1.08)}.eplus-number{display:inline-flex;align-items:center;padding:1px 4px;border-radius:5px;background:#ffffff2b;color:#fff;text-decoration:underline;cursor:pointer}.eplus-number:hover{background:#ffffff40}</style></style><style>
+#ekoool-install-app{position:fixed;right:18px;bottom:18px;z-index:9999;display:none;border:0;border-radius:14px;padding:12px 16px;background:linear-gradient(135deg,#5b7cff,#7b5cff);color:#fff;font:700 14px system-ui,sans-serif;box-shadow:0 8px 24px #5b6cff55;cursor:pointer}
+#ekoool-install-app:hover{filter:brightness(1.06)}@media(max-width:560px){#ekoool-install-app{right:12px;bottom:12px}}
+</style>
+<script>
+(function(){
+ let installPrompt=null,button=null;
+ function makeButton(){
+  if(button||!document.body)return;
+  button=document.createElement('button');button.id='ekoool-install-app';button.type='button';button.textContent='⬇ Установить EKOOOL';
+  button.addEventListener('click',async function(){
+   if(!installPrompt)return;
+   button.disabled=true;
+   try{await installPrompt.prompt();await installPrompt.userChoice;installPrompt=null;button.style.display='none'}
+   catch(e){}
+   button.disabled=false;
+  });
+  document.body.appendChild(button);
+ }
+ window.addEventListener('beforeinstallprompt',function(event){
+  event.preventDefault();installPrompt=event;
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',makeButton,{once:true});else makeButton();
+  if(button)button.style.display='block';
+  else window.setTimeout(function(){if(button)button.style.display='block'},0);
+ });
+ window.addEventListener('appinstalled',function(){if(button)button.style.display='none';installPrompt=null});
+})();
+</script>
+</head><body><div id="app"><div id="bootFallback" style="height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:30px;text-align:center"><div style="font-size:42px;margin-bottom:12px">💬</div><h1 style="margin:0 0 8px;color:var(--pr)">EKOOOL</h1><p style="margin:0 0 18px;color:var(--mut)">Мессенджер загружается…</p><button onclick="if(window.auth){window.auth()}else{location.reload()}" style="border:0;border-radius:12px;padding:11px 22px;background:var(--pr);color:#fff;cursor:pointer">Открыть мессенджер</button></div></div>
 <script>
 const TEST_E2EE=1;
 if(location.search.includes('desktop=1'))document.documentElement.classList.add('desktop');
