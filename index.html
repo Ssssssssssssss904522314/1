@@ -405,7 +405,7 @@ function auth(mode='in',add){
        const bb=bad(me);if(bb)return blocked(bb);
        try{localStorage.ekid=me.id;localStorage.ekproof=JSON.stringify({id:me.id,passHash:me.passHash})}catch(e){}
        if(add&&prev&&prev.id!==me.id)await botMsg(prev.id,'➕ На этом устройстве добавлен аккаунт @'+(me.username||me.id)+'.');
-       try{await botLoginEvent(me.id,'login')}catch(e){}
+       
        return start();
      }catch(e){return er.textContent='Ошибка: '+(e.message||e.code)}
    }
@@ -421,7 +421,7 @@ function auth(mode='in',add){
      const ss=await db.doc('users/'+xx.id).get();if(!ss.exists)return er.textContent='Аккаунт создан, но не удалось загрузить профиль';
      me={id:xx.id,...ss.data()};
      try{localStorage.ekid=me.id;localStorage.ekproof=JSON.stringify({id:me.id,passHash:me.passHash})}catch(e){}
-     cache={};try{await botLoginEvent(me.id,'registration')}catch(e){}if(add&&prev&&prev.id!==me.id){try{await botMsg(me.id,'🆕 Аккаунт добавлен на это устройство.')}catch(e){}}
+     cache={};if(add&&prev&&prev.id!==me.id){try{await botMsg(me.id,'🆕 Аккаунт добавлен на это устройство.')}catch(e){}}
      start();
    }catch(e){$('#go').disabled=false;er.textContent='Ошибка: '+(e.message||e.code)}
  };
@@ -453,13 +453,6 @@ function loginDeviceInfo(){
  else if(/Firefox\//i.test(ua))browser='Mozilla Firefox';
  else if(/Safari\//i.test(ua)&&!/Chrome\//i.test(ua))browser='Safari';
  return os+' · '+browser+(navigator.platform?' · '+navigator.platform:'');
-}
-async function botLoginEvent(uid,kind='login'){
- try{
-  const proof=me?.passHash||'';
-  if(!uid||!proof)return;
-  await fetch('/api/security/login-event',{method:'POST',headers:{'Content-Type':'application/json'},credentials:'include',body:JSON.stringify({uid,proof,device:loginDeviceInfo(),kind})});
- }catch(e){}
 }
 async function helpBotHook(p){
  if(p.type!=='text')return botSayTo(HELPBOT.id,'🛟 Я принимаю текстовые сообщения. Опишите вашу проблему текстом.');
