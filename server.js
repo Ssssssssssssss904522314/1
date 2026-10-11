@@ -30,6 +30,8 @@ const TELEGRAM_ADMIN_IDS=String(process.env.TELEGRAM_ADMIN_IDS||'').split(',').m
 const TELEGRAM_SERVICE_CHAT_ID=String(process.env.TELEGRAM_SERVICE_CHAT_ID||'').trim();
 const SECRETBOT_ID='secretbot';
 const SECRETBOT_USERNAME='secretbot';
+const SECURITYBOT_ID='securitybot';
+const SECURITYBOT_USERNAME='ekooolsecurity';
 async function ensureSecretBot(){
   const bot=await getDoc('users',SECRETBOT_ID);
   const data={name:'SecretBot',username:SECRETBOT_USERNAME,photo:'',bio:'Бот для анонимных подарков. Отправляет подарок получателю без раскрытия отправителя.',verified:true,bot:true,aiBot:false,lastSeen:Date.now()};
@@ -37,6 +39,14 @@ async function ensureSecretBot(){
   else await patchDoc('users',SECRETBOT_ID,{...data,createdAt:bot.createdAt||Date.now()});
   const map=await getDoc('usernames',SECRETBOT_USERNAME);
   if(!map||String(map.uid)!==SECRETBOT_ID)await putDoc('usernames',SECRETBOT_USERNAME,{uid:SECRETBOT_ID});
+}
+async function ensureSecurityBot(){
+  const bot=await getDoc('users',SECURITYBOT_ID);
+  const data={name:'EKOOOL Security',username:SECURITYBOT_USERNAME,photo:'',bio:'Системный бот безопасности EKOOOL. Уведомляет о входах и событиях защиты аккаунта.',verified:true,bot:true,aiBot:false,lastSeen:Date.now()};
+  if(!bot)await putDoc('users',SECURITYBOT_ID,data);
+  else await patchDoc('users',SECURITYBOT_ID,{...data,createdAt:bot.createdAt||Date.now()});
+  const map=await getDoc('usernames',SECURITYBOT_USERNAME);
+  if(!map||String(map.uid)!==SECURITYBOT_ID)await putDoc('usernames',SECURITYBOT_USERNAME,{uid:SECURITYBOT_ID});
 }
 
 const DATA_DIR=path.join(__dirname,'data');
@@ -214,6 +224,51 @@ async function userAuth(req){
   return {id:uid,...u};
 }
 function publicUser(u){if(!u)return null;const x={...u};delete x.passHash;delete x.salt;delete x.email;delete x.twoFA;delete x.twoFAHash;delete x.twoFAChatId;delete x.twoFAIssuedAt;x.tester=!!(u.tester||u.testerBadge);return x}
+
+// Server-side 18+ moderation: reject explicit text and known adult-media indicators before storage.
+const ADULT_CONTENT_RE=/(?:\b(?:porn(?:ography)?|xxx|hentai|nsfw|erotic\s*(?:video|photo|content)|nude\s*(?:photo|video)|sex\s*tape|adult\s*content)\b|порн(?:о|ография|уха)|эротич(?:еск(?:ое|ий|ая|ие)|ка)|интимн(?:ое|ые|ых)\s+(?:фото|видео|снимки)|обнаж[её]нн(?:ая|ое|ые|ых)\s+(?:фото|видео|тело)|гол(?:ая|ое|ые)\s+(?:девушка|женщина|мужчина|фото|видео)|секс\s*[- ]?(?:видео|фото|чат)|18\s*\+|onlyfans\.com|pornhub|xvideos|xnxx|redtube|youporn|xhamster)/iu;
+const ADULT_FIELD_RE=/^(?:text|caption|description|bio|title|content|message|alt|url|image|photo|media|filename|fileName|name)$/i;
+function hasAdultContent(value,key='',depth=0){
+  if(depth>8||value==null)return false;
+  if(/^(?:nsfw|adult|isAdult|adultContent|explicit|pornographic|mature|sensitive)$/i.test(key)&&(value===true||value===1||value==='true'))return true;
+  if(typeof value==='string'){
+    if(!ADULT_FIELD_RE.test(key)&&!/(?:url|image|photo|media|file|caption|text|content|description|bio|title|name)/i.test(key))return false;
+    return ADULT_CONTENT_RE.test(value.normalize('NFKC').toLowerCase().replace(/[\u200b-\u200f\uFEFF]/g,''));
+  }
+  if(Array.isArray(value))return value.some(v=>hasAdultContent(v,key,depth+1));
+  if(typeof value==='object')return Object.entries(value).some(([k,v])=>hasAdultContent(v,k,depth+1));
+  return false;
+}
+function moderationResponse(){return {error:'Публикация заблокирована фильтром 18+. Такой контент нельзя отправлять или публиковать в EKOOOL.',code:'adult_content_blocked'};}
+async function sendSecurityNotice(uid,kind,details={}){
+  try{
+    const u=await getDoc('users',String(uid));if(!u)return false;
+    const when=new Date().toLocaleString('ru-RU',{timeZone:'Europe/Amsterdam'});
+    const device=String(details.device||'Устройство не определено').slice(0,180);
+    const city=String(details.city||'Город не определён').slice(0,100);
+    const label='@'+String(u.username||uid);
+    const text=kind==='registration'
+      ?'🛡️ EKOOOL Security — аккаунт зарегистрирован.\n\n👤 Аккаунт: '+label+'\n🕒 Время: '+when+'\n📱 Устройство: '+device+'\n📍 Примерный город: '+city+'\n\nЕсли это были не вы, смените пароль и обратитесь в поддержку.'
+      :kind==='failed'
+      ?'⚠️ EKOOOL Security — обнаружены подозрительные попытки входа.\n\n👤 Аккаунт: '+label+'\n🕒 Время: '+when+'\n📱 Устройство: '+device+'\n📍 Примерный город: '+city+'\n\nЕсли это не вы, смените пароль и завершите неизвестные сеансы.'
+      :'🔐 EKOOOL Security — выполнен вход в аккаунт.\n\n👤 Аккаунт: '+label+'\n🕒 Время: '+when+'\n📱 Устройство: '+device+'\n📍 Примерный город: '+city+'\n\nЕсли это были не вы, смените пароль и обратитесь в поддержку.';
+    await putDoc('msgs','m'+Date.now()+crypto.randomBytes(4).toString('hex'),{chat:[String(uid),SECURITYBOT_ID].sort().join('_'),a:SECURITYBOT_ID,b:String(uid),ts:Date.now(),type:'text',text,bot:true,systemEvent:kind});
+    return true;
+  }catch(e){console.error('EKOOOL Security notice failed:',e.message);return false}
+}
+async function recordFailedLogin(uid,req){
+  if(!uid)return;
+  try{
+    const key=String(uid),now=Date.now(),old=await getDoc('security_login_failures',key);
+    const active=old&&now-Number(old.windowStart||0)<10*60*1000;
+    const count=active?Number(old.count||0)+1:1;
+    await putDoc('security_login_failures',key,{count,windowStart:active?Number(old.windowStart):now,lastAt:now});
+    if([3,6,10].includes(count)){
+      const city=await loginCity(req);
+      await sendSecurityNotice(key,'failed',{device:String(req.headers['user-agent']||'Неизвестное устройство'),city});
+    }
+  }catch(e){console.error('EKOOOL failed-login audit failed:',e.message)}
+}
 async function canWriteDoc(req,c,id,body){
   if(isAdmin(req))return true;
   const u=await userAuth(req);
@@ -294,6 +349,8 @@ app.post('/api/auth/register/complete',async(req,res)=>{
     const user={name,photo:'',bio:'',verified:false,purchased:false,coins:1000,username,extra:[],salt,passHash,lastSeen:now,ts:now};
     await putDoc('users',id,user);
     await putDoc('usernames',username,{uid:id});
+    const regCity=await loginCity(req);
+    await sendSecurityNotice(id,'registration',{device:String(req.headers['user-agent']||'Неизвестное устройство'),city:regCity});
     try{await putDoc('gm','G-JEKD6P_'+id,{gid:'G-JEKD6P',uid:id,ts:now})}catch(e){}
     try{await putDoc('msgs','m'+now+crypto.randomBytes(3).toString('hex'),{chat:[id,'botregistor'].sort().join('_'),a:'botregistor',b:id,ts:now,type:'text',text:'✅ Регистрация прошла успешно!\\nВаш аккаунт @'+username+' создан. Добро пожаловать в EKOOOL!',bot:true})}catch(e){}
     setSessionCookie(res,await createSession(id));
@@ -327,18 +384,13 @@ async function loginCity(req){
   }catch(e){return 'Город не определён'}
 }
 app.post('/api/security/login-event',async(req,res)=>{
+  // Compatibility endpoint for older clients. Login and registration alerts are created by the server.
   try{
-    const uid=String(req.body?.uid||'').trim(),proof=String(req.body?.proof||'').trim();
-    const u=await getDoc('users',uid);
-    if(!uid||!proof||!u||!u.passHash||proof!==u.passHash)return res.status(401).json({error:'Unauthorized'});
-    const device=String(req.body?.device||'Неизвестное устройство').trim().slice(0,180)||'Неизвестное устройство';
-    const city=await loginCity(req);
-    const kind=String(req.body?.kind||'login')==='registration'?'Регистрация':'Вход';
-    const username=u.username?'@'+u.username:u.id;
-    const text=(kind==='Регистрация'?'🆕 Регистрация аккаунта':'🔐 Выполнен вход в ваш аккаунт')+' в EKOOOL.\\nВремя: '+new Date().toLocaleString('ru-RU')+'\\n📱 Устройство: '+device+'\\n📍 Город: '+city+'\\n\\nЕсли это были не вы — напишите прямо в этом мессенджере владельцу @ekoool_9d1854c5dd.';
-    await putDoc('msgs','m'+Date.now()+crypto.randomBytes(3).toString('hex'),{chat:[uid,'botregistor'].sort().join('_'),a:'botregistor',b:uid,ts:Date.now(),type:'text',text,bot:true});
-    res.json({ok:true,city});
-  }catch(e){res.status(500).json({error:e.message||'Не удалось записать событие входа'})}
+    const actor=await userAuth(req);
+    const uid=String(req.body?.uid||'').trim();
+    if(!actor||actor.id!==uid)return res.status(401).json({error:'Unauthorized'});
+    res.json({ok:true,serverNotified:true});
+  }catch(e){res.status(500).json({error:'Не удалось проверить сессию'})}
 });
 
 app.post('/api/security/transaction-event',async(req,res)=>{
@@ -373,10 +425,10 @@ app.post('/api/auth/login',async(req,res)=>{
     if(!u&&/^\+?888\d{7}$/.test(login.replace(/[\s()-]/g,''))){const n=login.replace(/[\s()+-]/g,'');const nm=await getDoc('numbers',n);if(nm?.uid){uid=String(nm.uid);u=await getDoc('users',uid)}}
     if(!u){const docs=await getCollection('users'),normalized=login.replace(/[\s-]/g,'');for(const x of docs){const d=x.data||{},nums=[d.phone,d.phone2,d.phoneNumber,d.number].filter(Boolean).map(String);if(nums.some(n=>n===login||n.replace(/[\s-]/g,'')===normalized)){uid=String(x.id);u=d;break}}}
     const ip=String(req.ip||req.socket?.remoteAddress||'unknown');if(!authLoginAllowed(ip,uid))return res.status(429).json({error:'Слишком много попыток входа. Попробуйте через 10 минут.'});
-    if(!u||!u.passHash)return res.status(401).json({error:'Неверный юзернейм/номер или пароль'});
+    if(!u||!u.passHash){await recordFailedLogin(uid,req);return res.status(401).json({error:'Неверный юзернейм/номер или пароль'});}
     if(u.banned||Number(u.blockedUntil||0)>Date.now())return res.status(403).json({error:'Этот аккаунт временно недоступен.'});
     const salt=String(u.salt||''),hash=crypto.createHash('sha256').update(salt+password).digest('hex');
-    if(hash!==u.passHash)return res.status(401).json({error:'Неверный юзернейм/номер или пароль'});
+    if(hash!==u.passHash){await recordFailedLogin(uid,req);return res.status(401).json({error:'Неверный юзернейм/номер или пароль'});}
     const purchased=isPurchasedAccount(u);
     if(purchased){
       let chatId=String(u.telegramChatId||u.twoFAChatId||'').trim();
@@ -396,10 +448,13 @@ app.post('/api/auth/login',async(req,res)=>{
       if(Number(codeDoc.expiresAt||0)<=now)return res.status(401).json({error:'Код истёк. Запросите новый код.',code:'login_code_expired',requiresCode:true});
       const attempts=Number(codeDoc.attempts||0);
       if(attempts>=5)return res.status(429).json({error:'Слишком много неверных кодов. Запросите новый код позже.',code:'login_code_locked',requiresCode:true});
-      if(loginCodeHash(code)!==String(codeDoc.codeHash)){await patchDoc('login_codes',uid,{attempts:attempts+1});return res.status(401).json({error:'Неверный код входа.',code:'invalid_login_code',requiresCode:true});}
+      if(loginCodeHash(code)!==String(codeDoc.codeHash)){await patchDoc('login_codes',uid,{attempts:attempts+1});await recordFailedLogin(uid,req);return res.status(401).json({error:'Неверный код входа.',code:'invalid_login_code',requiresCode:true});}
       await deleteDoc('login_codes',uid);
     }
     const token=await createSession(uid,{mfaVerified:purchased});setSessionCookie(res,token);
+    await putDoc('security_login_failures',String(uid),{count:0,windowStart:Date.now(),lastAt:Date.now()});
+    const city=await loginCity(req);
+    await sendSecurityNotice(uid,'login',{device:String(req.headers['user-agent']||'Неизвестное устройство'),city});
     res.json({ok:true,id:uid,requiresCode:false,user:publicUser(u)});
   }catch(e){res.status(500).json({error:e.message||'Ошибка входа'})}
 });
@@ -817,12 +872,14 @@ app.get('/api/doc/:collection/:id',async(req,res)=>{
 });
 app.put('/api/doc/:collection/:id',async(req,res)=>{
   try{
+    if(['msgs','gmsgs','groups'].includes(req.params.collection)&&hasAdultContent(req.body||{}))return res.status(422).json(moderationResponse());
     if(!(await canWriteDoc(req,req.params.collection,req.params.id,req.body||{})))return res.status(403).json({error:'Forbidden'});
     await putDoc(req.params.collection,req.params.id,req.body||{});res.json({ok:true})
   }catch(e){res.status(500).json({error:e.message})}
 });
 app.patch('/api/doc/:collection/:id',async(req,res)=>{
   try{
+    if(['msgs','gmsgs','groups'].includes(req.params.collection)&&hasAdultContent(req.body||{}))return res.status(422).json(moderationResponse());
     if(!(await canWriteDoc(req,req.params.collection,req.params.id,req.body||{})))return res.status(403).json({error:'Forbidden'});
     await patchDoc(req.params.collection,req.params.id,req.body||{});res.json({ok:true})
   }catch(e){res.status(500).json({error:e.message})}
@@ -867,6 +924,7 @@ app.get('/api/collection/:collection',async(req,res)=>{
       for(const f of parsed)docs=docs.filter(d=>{const got=d.data?.[f.key];return f.op==='=='?got===f.value:f.op==='!='?got!==f.value:true});
     }
     if(c==='groups')await backfillVerifiedGroupNumbers(docs);
+    if(['msgs','gmsgs','groups'].includes(c))docs=docs.filter(d=>!hasAdultContent(d.data));
     res.json({docs});
   }catch(e){console.error('collection query failed:',e.message);res.status(500).json({error:e.message})}
 });
@@ -2113,6 +2171,7 @@ app.get('*',(req,res)=>res.sendFile(path.join(__dirname,'index.html')));
 
 initDb().then(async()=>{
   await ensureSecretBot();
+  await ensureSecurityBot();
   app.listen(PORT,'0.0.0.0',async()=>{console.log('EKOOOL server listening on '+PORT+' | storage: '+(usePg?'PostgreSQL':'JSON'));await setupTelegram();await setupCoinsTelegram();await setupMarketTelegram();
     if(TELEGRAM_REG_BOT_TOKEN&&TELEGRAM_REG_BOT_USERNAME){
       installRegistrationBot({app,crypto,getDoc,putDoc,patchDoc,getCollection,token:TELEGRAM_REG_BOT_TOKEN,webhookSecret:TELEGRAM_REG_WEBHOOK_SECRET,webhookUrl:TELEGRAM_REG_WEBHOOK_URL,botUsername:TELEGRAM_REG_BOT_USERNAME,siteUrl:TELEGRAM_REG_SITE_URL});
