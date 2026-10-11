@@ -226,7 +226,7 @@ async function userAuth(req){
 function publicUser(u){if(!u)return null;const x={...u};delete x.passHash;delete x.salt;delete x.email;delete x.twoFA;delete x.twoFAHash;delete x.twoFAChatId;delete x.twoFAIssuedAt;x.tester=!!(u.tester||u.testerBadge);return x}
 
 // Server-side 18+ moderation: reject explicit text and known adult-media indicators before storage.
-const ADULT_CONTENT_RE=/(?:\b(?:porn(?:ography)?|xxx|hentai|nsfw|erotic\s*(?:video|photo|content)|nude\s*(?:photo|video)|sex\s*tape|adult\s*content)\b|порн(?:о|ография|уха)|эротич(?:еск(?:ое|ий|ая|ие)|ка)|интимн(?:ое|ые|ых)\s+(?:фото|видео|снимки)|обнаж[её]нн(?:ая|ое|ые|ых)\s+(?:фото|видео|тело)|гол(?:ая|ое|ые)\s+(?:девушка|женщина|мужчина|фото|видео)|секс\s*[- ]?(?:видео|фото|чат)|18\s*\+|onlyfans\.com|pornhub|xvideos|xnxx|redtube|youporn|xhamster)/iu;
+const ADULT_CONTENT_RE=/(?:\b(?:porn(?:ography)?|xxx|hentai|nsfw|erotic\s*(?:video|photo|content)|nude\s*(?:photo|video)|sex\s*tape|adult\s*content)\b|порн(?:о|ография|уха)|эротич(?:еск(?:ое|ий|ая|ие)|ка)|интимн(?:ое|ые|ых)\s+(?:фото|видео|снимки)|обнаж[её]нн(?:ая|ое|ые|ых)\s+(?:фото|видео|тело)|гол(?:ая|ое|ые)\s+(?:девушка|женщина|мужчина|фото|видео)|секс\s*[- ]?(?:видео|фото|чат)|onlyfans\.com|pornhub|xvideos|xnxx|redtube|youporn|xhamster)/iu;
 const ADULT_FIELD_RE=/^(?:text|caption|description|bio|title|content|message|alt|url|image|photo|media|filename|fileName|name)$/i;
 function hasAdultContent(value,key='',depth=0){
   if(depth>8||value==null)return false;
