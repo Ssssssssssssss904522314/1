@@ -424,34 +424,38 @@ app.post('/api/auth/login',async(req,res)=>{
     if(raw){const map=await getDoc('usernames',raw);if(map?.uid){uid=String(map.uid);u=await getDoc('users',uid)}}
     if(!u&&/^\+?888\d{7}$/.test(login.replace(/[\s()-]/g,''))){const n=login.replace(/[\s()+-]/g,'');const nm=await getDoc('numbers',n);if(nm?.uid){uid=String(nm.uid);u=await getDoc('users',uid)}}
     if(!u){const docs=await getCollection('users'),normalized=login.replace(/[\s-]/g,'');for(const x of docs){const d=x.data||{},nums=[d.phone,d.phone2,d.phoneNumber,d.number].filter(Boolean).map(String);if(nums.some(n=>n===login||n.replace(/[\s-]/g,'')===normalized)){uid=String(x.id);u=d;break}}}
-    const ip=String(req.ip||req.socket?.remoteAddress||'unknown');if(!authLoginAllowed(ip,uid))return res.status(429).json({error:'Слишком много попыток входа. Попробуйте через 10 минут.'});
+    const ip=String(req.ip||req.socket?.remoteAddress||'unknown');
+    if(!authLoginAllowed(ip,uid))return res.status(429).json({error:'Слишком много попыток входа. Попробуйте через 10 минут.'});
     if(!u||!u.passHash){await recordFailedLogin(uid,req);return res.status(401).json({error:'Неверный юзернейм/номер или пароль'});}
     if(u.banned||Number(u.blockedUntil||0)>Date.now())return res.status(403).json({error:'Этот аккаунт временно недоступен.'});
     const salt=String(u.salt||''),hash=crypto.createHash('sha256').update(salt+password).digest('hex');
     if(hash!==u.passHash){await recordFailedLogin(uid,req);return res.status(401).json({error:'Неверный юзернейм/номер или пароль'});}
     const purchased=isPurchasedAccount(u);
-    if(purchased){
-      let chatId=String(u.telegramChatId||u.twoFAChatId||'').trim();
-      if(!chatId&&u.purchaseOrderId){const order=await getDoc('telegram_personal_orders',String(u.purchaseOrderId));chatId=String(order?.userId||'').trim();}
-      if(!chatId)return res.status(403).json({error:'Для входа в покупной аккаунт сначала привяжите Telegram-бота.',code:'telegram_required'});
+    let chatId=String(u.telegramChatId||u.twoFAChatId||'').trim();
+    if(!chatId&&purchased&&u.purchaseOrderId){const order=await getDoc('telegram_personal_orders',String(u.purchaseOrderId));chatId=String(order?.userId||'').trim();}
+    if(purchased&&!chatId)return res.status(403).json({error:'Для входа в этот аккаунт необходимо привязать Telegram.',code:'telegram_required'});
+    const telegramVerified=!!chatId;
+    if(telegramVerified){
+      if(!TELEGRAM_REG_BOT_TOKEN)return res.status(503).json({error:'Telegram-бот Verefication Code ещё не подключён на сервере.',code:'telegram_bot_unconfigured'});
       const code=String(req.body?.loginCode||'').trim(),now=Date.now();
       let codeDoc=await getDoc('login_codes',uid);
       if(!code){
-        if(!codeDoc||Number(codeDoc.expiresAt||0)<=now){
-          const fresh=genLoginCode();codeDoc={uid,codeHash:loginCodeHash(fresh),expiresAt:now+5*60*1000,attempts:0,createdAt:now};
-          await putDoc('login_codes',uid,codeDoc);
-          const sent=await sendTelegramBotMessage(TELEGRAM_BOT_TOKEN,chatId,'🔐 EKOOOL — код для входа\n\n👤 @'+String(u.username||uid)+'\n🔢 Код: '+fresh+'\n\nКод действует 5 минут и используется только один раз. Никому его не передавайте.');
-          if(!sent)return res.status(503).json({error:'Не удалось отправить код в Telegram-бот. Попробуйте ещё раз.',code:'code_delivery_failed'});
-        }
-        return res.status(401).json({error:'Код для входа отправлен в Telegram-бот.',code:'login_code_required',requiresCode:true});
+        const fresh=String(crypto.randomInt(100000,1000000));
+        codeDoc={uid,codeHash:crypto.createHash('sha256').update('EKOOOL-LOGIN-CODE:'+fresh).digest('hex'),expiresAt:now+5*60*1000,attempts:0,createdAt:now};
+        await putDoc('login_codes',uid,codeDoc);
+        const sent=await sendTelegramBotMessage(TELEGRAM_REG_BOT_TOKEN,chatId,'🔐 EKOOOL — подтверждение входа\n\n👤 Аккаунт: @'+String(u.username||uid)+'\n🔢 Код: '+fresh+'\n\nКод действует 5 минут, используется один раз. Никому его не передавайте.');
+        if(!sent){await deleteDoc('login_codes',uid);return res.status(503).json({error:'Не удалось отправить код. Откройте бота Verefication Code в Telegram и нажмите /start.',code:'code_delivery_failed'});}
+        return res.status(401).json({error:'Код отправлен ботом Verefication Code. Введите его ниже.',code:'login_code_required',requiresCode:true});
       }
-      if(Number(codeDoc.expiresAt||0)<=now)return res.status(401).json({error:'Код истёк. Запросите новый код.',code:'login_code_expired',requiresCode:true});
+      if(!codeDoc||Number(codeDoc.expiresAt||0)<=now){if(codeDoc)await deleteDoc('login_codes',uid);return res.status(401).json({error:'Код истёк. Нажмите «Войти» ещё раз, чтобы получить новый.',code:'login_code_expired',requiresCode:true});}
       const attempts=Number(codeDoc.attempts||0);
-      if(attempts>=5)return res.status(429).json({error:'Слишком много неверных кодов. Запросите новый код позже.',code:'login_code_locked',requiresCode:true});
-      if(loginCodeHash(code)!==String(codeDoc.codeHash)){await patchDoc('login_codes',uid,{attempts:attempts+1});await recordFailedLogin(uid,req);return res.status(401).json({error:'Неверный код входа.',code:'invalid_login_code',requiresCode:true});}
+      if(attempts>=5)return res.status(429).json({error:'Слишком много неверных кодов. Нажмите «Войти» позже, чтобы запросить новый код.',code:'login_code_locked',requiresCode:true});
+      const submittedHash=crypto.createHash('sha256').update('EKOOOL-LOGIN-CODE:'+code).digest('hex');
+      if(submittedHash!==String(codeDoc.codeHash)){await patchDoc('login_codes',uid,{attempts:attempts+1});await recordFailedLogin(uid,req);return res.status(401).json({error:'Неверный код входа.',code:'invalid_login_code',requiresCode:true});}
       await deleteDoc('login_codes',uid);
     }
-    const token=await createSession(uid,{mfaVerified:purchased});setSessionCookie(res,token);
+    const token=await createSession(uid,{mfaVerified:telegramVerified||purchased,loginMethod:telegramVerified?'telegram-code':'password'});
+    setSessionCookie(res,token);
     await putDoc('security_login_failures',String(uid),{count:0,windowStart:Date.now(),lastAt:Date.now()});
     const city=await loginCity(req);
     await sendSecurityNotice(uid,'login',{device:String(req.headers['user-agent']||'Неизвестное устройство'),city});
