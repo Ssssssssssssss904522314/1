@@ -90,6 +90,19 @@ module.exports = function installRegistrationBot({
   };
 
   async function start(chatId) {
+    const existingUsers = await getCollection('users');
+    const linkedUser = existingUsers.find(
+      (item) => String(item.data?.telegramChatId || '') === String(chatId)
+    );
+    if (linkedUser) {
+      return send(
+        chatId,
+        '✅ Этот Telegram уже привязан к аккаунту EKOOOL @' +
+          String(linkedUser.data?.username || '') +
+          '.\n\nТеперь здесь можно получать одноразовые коды входа. Вернись в EKOOOL и нажми «Войти».'
+      );
+    }
+
     await putDoc(
       'registration_bot_states',
       stateId(chatId),
