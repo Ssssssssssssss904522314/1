@@ -9,6 +9,16 @@ services:
         sync: false
       - key: DATABASE_URL
         sync: false
+      - key: TELEGRAM_REG_BOT_TOKEN
+        sync: false
+      - key: TELEGRAM_REG_BOT_USERNAME
+        sync: false
+      - key: TELEGRAM_REG_WEBHOOK_SECRET
+        sync: false
+      - key: TELEGRAM_REG_WEBHOOK_URL
+        value: https://ekool-server.onrender.com/api/telegram/registration-webhook
+      - key: TELEGRAM_REG_SITE_URL
+        value: https://ekool-server.onrender.com/
 
   - type: web
     name: ekool-password-bot
