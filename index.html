@@ -367,26 +367,30 @@ function auth(mode='in',add){
    <h1 class="eko-login-title">${reg?'Регистрация':'Вход в EKOOOL'}</h1>
    <div class="eko-login-sub">${reg?'Создайте аккаунт через Telegram':'Введите юзернейм или номер и пароль'}</div>
    ${reg
-    ?'<input class="eko-login-field" id="nm" placeholder="Имя" autocomplete="name"><input class="eko-login-field" id="un" placeholder="Юзернейм" autocomplete="username"><input class="eko-login-field" id="pw" type="password" placeholder="Пароль" autocomplete="new-password">'
-    :'<input class="eko-login-field" id="id" placeholder="Юзернейм или номер (+888…)" autocomplete="username"><input class="eko-login-field" id="pw" type="password" placeholder="Пароль" autocomplete="current-password"><input class="eko-login-field" id="tfa" type="password" inputmode="text" autocomplete="one-time-code" placeholder="Код из Telegram-бота" style="display:none">'}
+    ?'<div style="padding:14px 2px 18px;color:rgba(255,255,255,.72);font-size:14px;line-height:1.6">Создание аккаунта проходит через Telegram-бота <b>Verefication Code</b>. В боте выберите имя, юзернейм и пароль, затем подтвердите регистрацию.</div>'
+    :'<input class="eko-login-field" id="id" placeholder="Юзернейм или номер (+888…)" autocomplete="username"><input class="eko-login-field" id="pw" type="password" placeholder="Пароль" autocomplete="current-password"><input class="eko-login-field" id="tfa" type="text" inputmode="numeric" autocomplete="one-time-code" placeholder="Код из Verefication Code" style="display:none">'}
    <div class="eko-login-error" id="er"></div>
-   <button class="eko-login-main" id="go">${reg?'Создать аккаунт':'Войти'}</button>
+   <button class="eko-login-main" id="go">${reg?'Продолжить в Telegram':'Войти'}</button>
    ${!reg?'<button class="eko-login-qr" id="qrgo">▦&nbsp;&nbsp; Войти через QR-код</button>':''}
    <p class="eko-login-register">${reg?'Уже есть аккаунт? ':'У вас нет аккаунта? '}<a href="#" id="sw">${reg?'Войти':'Зарегистрироваться'}</a></p>
    ${isAdmin?'<p><a href="#" id="adl" style="color:var(--mut)">Админ-панель</a></p>':''}
   </div>
  </div>`;
- $('#sw').onclick=async e=>{
+ $('#sw').onclick=e=>{
    e.preventDefault();
-   if(reg){auth('in',add);return;}
-   try{const r=await fetch('/api/telegram/registration-bot');const x=await r.json();if(r.ok&&x.botUrl){location.href=x.botUrl;return;}}catch(_){}
-   $('#er').textContent='Регистрационный бот пока недоступен';
+   auth(reg?'in':'up',add);
  };
  if(add&&$('#bk'))$('#bk').onclick=settings;
  if($('#adl'))$('#adl').onclick=e=>{e.preventDefault();admin()};
  if($('#qrgo'))$('#qrgo').onclick=()=>{if(typeof window.ekooolDeviceLogin==='function')window.ekooolDeviceLogin();else $('#er').textContent='QR-вход пока недоступен';};
  $('#go').onclick=async()=>{
-   const pw=$('#pw').value,er=$('#er');await loadLock();if(LOCK.on&&!isAdmin)return lockScreen();
+   const er=$('#er');await loadLock();if(LOCK.on&&!isAdmin)return lockScreen();
+   if(reg){
+     try{const r=await fetch('/api/telegram/registration-bot');const x=await r.json().catch(()=>({}));if(r.ok&&x.botUrl){location.href=x.botUrl;return;}er.textContent=x.error||'Бот Verefication Code пока не подключён';}
+     catch(e){er.textContent='Не удалось открыть Telegram-бота';}
+     return;
+   }
+   const pw=$('#pw').value;
    if(pw.length<6)return er.textContent='Пароль: минимум 6 символов';
    if(!reg){
      try{
