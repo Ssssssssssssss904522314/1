@@ -399,8 +399,10 @@ function auth(mode='in',add){
        const xx=await rr.json().catch(()=>({}));
        if(!rr.ok){
          if(xx.code==='login_code_required'||xx.code==='login_code_expired'||xx.code==='invalid_login_code'||xx.requiresCode){
-           $('#tfa').style.display='block';$('#tfa').focus();$('#go').textContent='Ввести код';
-           er.textContent=xx.code==='invalid_login_code'?'❌ Неверный код.':'📨 Код из Telegram-бота отправлен. Введите его сюда.';
+           $('#tfa').style.display='block';
+           if(xx.code==='login_code_expired')$('#tfa').value='';
+           $('#tfa').focus();$('#go').textContent=xx.code==='login_code_expired'?'Получить новый код':'Ввести код';
+           er.textContent=xx.code==='invalid_login_code'?'❌ Неверный код.':xx.code==='login_code_expired'?'⌛ Код истёк. Нажмите кнопку, чтобы получить новый.':'📨 Код из Verefication Code отправлен. Введите его сюда.';
            return;
          }
          return er.textContent=xx.error||'Неверный юзернейм или пароль';
