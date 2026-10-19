@@ -488,6 +488,98 @@ app.post('/api/auth/logout',async(req,res)=>{
     res.json({ok:true});
   }catch(e){clearSessionCookie(res);res.status(500).json({error:e.message})}
 });
+
+const DEVICE_LOGIN_TTL=3*60*1000;
+function deviceLoginCode(){const n=String(crypto.randomInt(0,1000000)).padStart(6,'0');return n.slice(0,3)+'-'+n.slice(3)}
+app.post('/api/device/login/request',async(req,res)=>{
+  try{
+    const id=crypto.randomBytes(24).toString('base64url');
+    const code=deviceLoginCode(),now=Date.now();
+    const device=String(req.body?.device||req.headers['user-agent']||'Неизвестное устройство').slice(0,180);
+    await putDoc('device_login_requests',id,{id,code,status:'pending',device,createdAt:now,expiresAt:now+DEVICE_LOGIN_TTL,requestIp:String(req.ip||'').slice(0,80)});
+    const host=String(req.get('host')||'').toLowerCase();
+    const origin=(req.secure||req.headers['x-forwarded-proto']==='https'?'https://':'http://')+host;
+    res.json({ok:true,id,code,qrUrl:origin+'/#device-approve/'+id,expiresAt:now+DEVICE_LOGIN_TTL});
+  }catch(e){res.status(500).json({error:e.message||'Не удалось создать QR-вход'})}
+});
+app.get('/api/device/login/status',async(req,res)=>{
+  try{
+    const id=String(req.query?.id||'').trim();
+    if(!/^[A-Za-z0-9_-]{20,100}$/.test(id))return res.status(400).json({error:'Некорректный идентификатор входа'});
+    const d=await getDoc('device_login_requests',id);
+    if(!d)return res.status(404).json({error:'Запрос входа не найден'});
+    if(Number(d.expiresAt||0)<=Date.now()&&d.status==='pending'){
+      await patchDoc('device_login_requests',id,{status:'expired'});
+      return res.json({ok:true,status:'expired'});
+    }
+    if(d.status==='approved'){
+      const uid=String(d.approvedUid||'');
+      const u=uid?await getDoc('users',uid):null;
+      if(!u||u.banned||Number(u.blockedUntil||0)>Date.now()){
+        await patchDoc('device_login_requests',id,{status:'denied'});
+        return res.json({ok:true,status:'denied'});
+      }
+      const token=await createSession(uid,{mfaVerified:true,loginMethod:'qr',device:String(d.device||'Unknown').slice(0,180)});
+      setSessionCookie(res,token);
+      await patchDoc('device_login_requests',id,{status:'logged_in',loggedInAt:Date.now(),sessionIssued:true});
+      const city=await loginCity(req);
+      await sendSecurityNotice(uid,'login',{device:String(d.device||'Неизвестное устройство'),city,method:'QR'});
+      return res.json({ok:true,status:'logged_in'});
+    }
+    res.json({ok:true,status:d.status==='logged_in'?'logged_in':d.status||'pending'});
+  }catch(e){res.status(500).json({error:e.message||'Не удалось проверить QR-вход'})}
+});
+app.post('/api/device/login/approve',async(req,res)=>{
+  try{
+    const actor=await userAuth(req);
+    if(!actor)return res.status(401).json({error:'Войдите в EKOOOL на подтверждающем устройстве'});
+    const id=String(req.body?.id||'').trim(),code=String(req.body?.code||'').trim();
+    let d=null,docId='';
+    if(id){
+      if(!/^[A-Za-z0-9_-]{20,100}$/.test(id))return res.status(400).json({error:'Некорректный QR-код'});
+      d=await getDoc('device_login_requests',id);docId=id;
+    }else if(/^\d{3}-\d{3}$/.test(code)){
+      const docs=await getCollection('device_login_requests');
+      const found=docs.find(x=>String(x.data?.code||'')===code&&x.data?.status==='pending'&&Number(x.data?.expiresAt||0)>Date.now());
+      if(found){d=found.data;docId=String(found.id)}
+    }
+    if(!d||!docId)return res.status(404).json({error:'Запрос входа не найден или код истёк'});
+    if(d.status!=='pending'||Number(d.expiresAt||0)<=Date.now())return res.status(410).json({error:'Код истёк или уже использован. Создайте новый QR-код.'});
+    if(String(actor.id)===String(d.approvedUid||''))return res.status(409).json({error:'Вход уже подтверждён'});
+    await patchDoc('device_login_requests',docId,{status:'approved',approvedUid:String(actor.id),approvedAt:Date.now()});
+    res.json({ok:true});
+  }catch(e){res.status(500).json({error:e.message||'Не удалось подтвердить вход'})}
+});
+app.get('/api/device/sessions',async(req,res)=>{
+  try{
+    const u=await userAuth(req);
+    if(!u)return res.status(401).json({error:'Войдите в EKOOOL'});
+    const currentToken=readCookie(req,SESSION_COOKIE),currentSid=currentToken?sessionHash(currentToken):'';
+    const docs=await getCollection('sessions');
+    const sessions=docs.filter(x=>String(x.data?.uid||'')===String(u.id)&&Number(x.data?.expires||0)>Date.now()).map(x=>({id:String(x.id),device:String(x.data?.device||'Неизвестное устройство').slice(0,180),city:String(x.data?.city||'Город не определён').slice(0,100),method:String(x.data?.loginMethod||'password'),createdAt:Number(x.data?.createdAt||0),current:String(x.id)===currentSid}));
+    res.json({ok:true,sessions});
+  }catch(e){res.status(500).json({error:e.message||'Не удалось загрузить сессии'})}
+});
+app.post('/api/device/sessions/revoke',async(req,res)=>{
+  try{
+    const u=await userAuth(req);if(!u)return res.status(401).json({error:'Войдите в EKOOOL'});
+    const id=String(req.body?.id||'').trim();if(!id)return res.status(400).json({error:'Не указана сессия'});
+    const d=await getDoc('sessions',id);if(!d||String(d.uid)!==String(u.id))return res.status(404).json({error:'Сессия не найдена'});
+    const currentToken=readCookie(req,SESSION_COOKIE);
+    if(currentToken&&sessionHash(currentToken)===id)return res.status(400).json({error:'Нельзя завершить текущую сессию этой кнопкой'});
+    await deleteDoc('sessions',id);res.json({ok:true});
+  }catch(e){res.status(500).json({error:e.message||'Не удалось завершить сессию'})}
+});
+app.post('/api/device/sessions/revoke-all',async(req,res)=>{
+  try{
+    const u=await userAuth(req);if(!u)return res.status(401).json({error:'Войдите в EKOOOL'});
+    const currentToken=readCookie(req,SESSION_COOKIE),currentSid=currentToken?sessionHash(currentToken):'';
+    const docs=await getCollection('sessions');
+    for(const x of docs)if(String(x.data?.uid||'')===String(u.id)&&String(x.id)!==currentSid)await deleteDoc('sessions',String(x.id));
+    res.json({ok:true});
+  }catch(e){res.status(500).json({error:e.message||'Не удалось завершить остальные сессии'})}
+});
+
 app.post('/api/admin/login',(req,res)=>{
   if(!ADMIN_PASSWORD)return res.status(503).json({error:'ADMIN_PASSWORD не настроен'});
   if(!adminLoginAllowed(req.ip))return res.status(429).json({error:'Слишком много попыток. Повторите позже.'});
