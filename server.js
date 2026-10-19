@@ -494,12 +494,14 @@ function deviceLoginCode(){const n=String(crypto.randomInt(0,1000000)).padStart(
 app.post('/api/device/login/request',async(req,res)=>{
   try{
     const id=crypto.randomBytes(24).toString('base64url');
+    const approvalToken=crypto.randomBytes(24).toString('base64url');
+    const approvalTokenHash=crypto.createHash('sha256').update('EKOOOL-DEVICE-APPROVAL:'+approvalToken).digest('hex');
     const code=deviceLoginCode(),now=Date.now();
     const device=String(req.body?.device||req.headers['user-agent']||'Неизвестное устройство').slice(0,180);
-    await putDoc('device_login_requests',id,{id,code,status:'pending',device,createdAt:now,expiresAt:now+DEVICE_LOGIN_TTL,requestIp:String(req.ip||'').slice(0,80)});
+    await putDoc('device_login_requests',id,{id,approvalTokenHash,code,status:'pending',device,createdAt:now,expiresAt:now+DEVICE_LOGIN_TTL,requestIp:String(req.ip||'').slice(0,80)});
     const host=String(req.get('host')||'').toLowerCase();
     const origin=(req.secure||req.headers['x-forwarded-proto']==='https'?'https://':'http://')+host;
-    res.json({ok:true,id,code,qrUrl:origin+'/#device-approve/'+id,expiresAt:now+DEVICE_LOGIN_TTL});
+    res.json({ok:true,id,code,qrUrl:origin+'/#device-approve/'+approvalToken,expiresAt:now+DEVICE_LOGIN_TTL});
   }catch(e){res.status(500).json({error:e.message||'Не удалось создать QR-вход'})}
 });
 app.get('/api/device/login/status',async(req,res)=>{
@@ -537,7 +539,10 @@ app.post('/api/device/login/approve',async(req,res)=>{
     let d=null,docId='';
     if(id){
       if(!/^[A-Za-z0-9_-]{20,100}$/.test(id))return res.status(400).json({error:'Некорректный QR-код'});
-      d=await getDoc('device_login_requests',id);docId=id;
+      const approvalHash=crypto.createHash('sha256').update('EKOOOL-DEVICE-APPROVAL:'+id).digest('hex');
+      const docs=await getCollection('device_login_requests');
+      const found=docs.find(x=>String(x.data?.approvalTokenHash||'')===approvalHash&&x.data?.status==='pending'&&Number(x.data?.expiresAt||0)>Date.now());
+      if(found){d=found.data;docId=String(found.id)}
     }else if(/^\d{3}-\d{3}$/.test(code)){
       const docs=await getCollection('device_login_requests');
       const found=docs.find(x=>String(x.data?.code||'')===code&&x.data?.status==='pending'&&Number(x.data?.expiresAt||0)>Date.now());
