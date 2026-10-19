@@ -499,8 +499,7 @@ app.post('/api/device/login/request',async(req,res)=>{
     const code=deviceLoginCode(),now=Date.now();
     const device=String(req.body?.device||req.headers['user-agent']||'Неизвестное устройство').slice(0,180);
     await putDoc('device_login_requests',id,{id,approvalTokenHash,code,status:'pending',device,createdAt:now,expiresAt:now+DEVICE_LOGIN_TTL,requestIp:String(req.ip||'').slice(0,80)});
-    const host=String(req.get('host')||'').toLowerCase();
-    const origin=(req.secure||req.headers['x-forwarded-proto']==='https'?'https://':'http://')+host;
+    const origin=String(process.env.PUBLIC_BASE_URL||'https://ekool-server.onrender.com').replace(/\/+$/,'');
     res.json({ok:true,id,code,qrUrl:origin+'/#device-approve/'+approvalToken,expiresAt:now+DEVICE_LOGIN_TTL});
   }catch(e){res.status(500).json({error:e.message||'Не удалось создать QR-вход'})}
 });
