@@ -28,7 +28,7 @@ async function deviceLogin(){
       <div style="text-align:center;font-size:30px;font-weight:900;letter-spacing:3px">${escx(q.code)}</div>
       <div class="note" style="text-align:center">Или подтвердите этот код: Настройки → Активные сессии → Вход с помощью кода</div>
       <button class="ib" id="backLogin" style="width:100%;margin-top:12px">← Назад</button>`);
-    if(window.QRCode)new QRCode($('#qr'),{text:q.qrUrl,width:210,height:210});
+    if(window.QRCode)new QRCode($('#qr'),{text:q.qrUrl,width:210,height:210,colorDark:'#102018',colorLight:'#ffffff',correctLevel:QRCode.CorrectLevel.M});else $('#qr').innerHTML='<p style="color:#a00;text-align:center">Не загрузился генератор QR. Откройте ссылку вручную: <a href="'+escx(q.qrUrl)+'">Войти через EKOOOL</a></p>';
     $('#backLogin').onclick=auth;
     const timer=setInterval(async()=>{
       try{const s=await api('/api/device/login/status?id='+encodeURIComponent(q.id));if(s.status==='logged_in'){clearInterval(timer);location.hash='';location.reload()}else if(s.status==='expired'){clearInterval(timer);alert('Код истёк. Создайте новый вход.');auth()}}catch(e){}
@@ -36,7 +36,7 @@ async function deviceLogin(){
   }catch(e){alert(e.message)}
 }
 async function approveDevice(id,code){
-  try{await api('/api/device/login/approve',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(id?{id}:{code})});toast?.('Вход подтверждён ✓');location.hash='';}catch(e){alert(e.message)}
+  try{await api('/api/device/login/approve',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(id?{id}:{code})});if(typeof window.toast==='function')window.toast('Вход подтверждён ✓');else alert('Вход подтверждён ✓');location.hash='';}catch(e){alert(e.message)}
 }
 async function openRegistrationBot(){
   const er=document.getElementById('sxer');
