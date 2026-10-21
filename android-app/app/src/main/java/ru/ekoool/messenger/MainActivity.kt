@@ -138,7 +138,6 @@ class BleDiscovery(private val activity: Activity, private val emit: (String, JS
             override fun onConnectionStateChange(device: BluetoothDevice, status: Int, newState: Int) {
                 val id = device.address
                 if (newState == BluetoothProfile.STATE_CONNECTED && status == BluetoothGatt.GATT_SUCCESS) {
-                    clients[id] = device.connectGatt(activity, false, clientCallback(id), BluetoothDevice.TRANSPORT_LE)
                     emit("onEKOOLBluetoothState", JSONObject().put("status", "peer_connected").put("peerId", id))
                 } else if (newState == BluetoothProfile.STATE_DISCONNECTED) {
                     clients.remove(id)?.close()
@@ -231,20 +230,31 @@ class BleDiscovery(private val activity: Activity, private val emit: (String, JS
         if (bytes.isEmpty()) return "empty_message"
         if (bytes.size > MAX_MESSAGE_BYTES) return "message_too_long"
         val gatt = peers[peerId]
-        val service = gatt?.getService(SERVICE_ID)
-        val characteristic = service?.getCharacteristic(RX_ID)
-        if (gatt == null || characteristic == null) return "not_connected"
+        val characteristic = gatt?.getService(SERVICE_ID)?.getCharacteristic(RX_ID)
         return try {
-            characteristic.writeType = BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT
-            if (Build.VERSION.SDK_INT >= 33) {
-                val result = gatt.writeCharacteristic(characteristic, bytes, BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT)
-                if (result == BluetoothStatusCodes.SUCCESS) "ok" else "write_failed_$result"
-            } else {
-                @Suppress("DEPRECATION")
-                characteristic.value = bytes
-                @Suppress("DEPRECATION")
-                if (gatt.writeCharacteristic(characteristic)) "ok" else "write_failed"
-            }
+            if (gatt != null && characteristic != null) {
+                characteristic.writeType = BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT
+                if (Build.VERSION.SDK_INT >= 33) {
+                    val result = gatt.writeCharacteristic(characteristic, bytes, BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT)
+                    if (result == BluetoothStatusCodes.SUCCESS) "ok" else "write_failed_$result"
+                } else {
+                    @Suppress("DEPRECATION")
+                    characteristic.value = bytes
+                    @Suppress("DEPRECATION")
+                    if (gatt.writeCharacteristic(characteristic)) "ok" else "write_failed"
+                }
+            } else if (peerId in notifying && gattServer != null) {
+                val device = adapter?.getRemoteDevice(peerId) ?: return "peer_not_found"
+                if (Build.VERSION.SDK_INT >= 33) {
+                    val result = gattServer!!.notifyCharacteristicChanged(device, txCharacteristic, false, bytes)
+                    if (result == BluetoothStatusCodes.SUCCESS) "ok" else "notify_failed_$result"
+                } else {
+                    @Suppress("DEPRECATION")
+                    txCharacteristic.value = bytes
+                    @Suppress("DEPRECATION")
+                    if (gattServer!!.notifyCharacteristicChanged(device, txCharacteristic, false)) "ok" else "notify_failed"
+                }
+            } else "not_connected"
         } catch (e: Exception) { "write_failed" }
     }
 
