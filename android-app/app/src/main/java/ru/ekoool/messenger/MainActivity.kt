@@ -64,6 +64,7 @@ class BleBridge(private val ble: BleDiscovery) {
     @JavascriptInterface fun stopAdvertising() { ble.stopAdvertising() }
     @JavascriptInterface fun connect(peerId: String) = ble.connect(peerId)
     @JavascriptInterface fun disconnect(peerId: String) { ble.disconnect(peerId) }
+    @JavascriptInterface fun acceptPeer(peerId: String, accepted: Boolean) { ble.acceptPeer(peerId, accepted) }
     @JavascriptInterface fun sendMessage(peerId: String, text: String) = ble.sendMessage(peerId, text)
 }
 
@@ -79,6 +80,7 @@ class BleDiscovery(private val activity: Activity, private val emit: (String, JS
     private val clients = mutableMapOf<String, BluetoothGatt>()
     private val peers = mutableMapOf<String, BluetoothGatt>()
     private val notifying = mutableSetOf<String>()
+    private val acceptedPeers = mutableSetOf<String>()
     private val txCharacteristic = BluetoothGattCharacteristic(
         TX_ID, BluetoothGattCharacteristic.PROPERTY_NOTIFY or BluetoothGattCharacteristic.PROPERTY_READ,
         BluetoothGattCharacteristic.PERMISSION_READ
@@ -138,7 +140,7 @@ class BleDiscovery(private val activity: Activity, private val emit: (String, JS
             override fun onConnectionStateChange(device: BluetoothDevice, status: Int, newState: Int) {
                 val id = device.address
                 if (newState == BluetoothProfile.STATE_CONNECTED && status == BluetoothGatt.GATT_SUCCESS) {
-                    emit("onEKOOLBluetoothState", JSONObject().put("status", "peer_connected").put("peerId", id))
+                    emit("onEKOOLBluetoothState", JSONObject().put("status", "connection_request").put("peerId", id))
                 } else if (newState == BluetoothProfile.STATE_DISCONNECTED) {
                     clients.remove(id)?.close()
                     notifying.remove(id)
@@ -149,6 +151,10 @@ class BleDiscovery(private val activity: Activity, private val emit: (String, JS
             override fun onCharacteristicWriteRequest(device: BluetoothDevice, requestId: Int,
                 characteristic: BluetoothGattCharacteristic, preparedWrite: Boolean, responseNeeded: Boolean,
                 offset: Int, value: ByteArray) {
+                if (device.address !in acceptedPeers) {
+                    if (responseNeeded) gattServer?.sendResponse(device, requestId, BluetoothGatt.GATT_INSUFFICIENT_AUTHENTICATION, offset, null)
+                    return
+                }
                 if (characteristic.uuid != RX_ID || offset != 0 || value.size > MAX_MESSAGE_BYTES) {
                     if (responseNeeded) gattServer?.sendResponse(device, requestId, BluetoothGatt.GATT_INVALID_ATTRIBUTE_LENGTH, offset, null)
                     return
@@ -205,14 +211,20 @@ class BleDiscovery(private val activity: Activity, private val emit: (String, JS
         }
 
         override fun onCharacteristicChanged(gatt: BluetoothGatt, characteristic: BluetoothGattCharacteristic, value: ByteArray) {
-            if (characteristic.uuid == TX_ID) emit("onEKOOLBluetoothMessage",
-                JSONObject().put("peerId", id).put("text", String(value, StandardCharsets.UTF_8)).put("incoming", true))
+            if (characteristic.uuid == TX_ID) {
+                val text = String(value, StandardCharsets.UTF_8)
+                if (text == "EKOOOL_ACCEPTED") emit("onEKOOLBluetoothState", JSONObject().put("status", "peer_accepted").put("peerId", id))
+                else emit("onEKOOLBluetoothMessage", JSONObject().put("peerId", id).put("text", text).put("incoming", true))
+            }
         }
 
         @Suppress("DEPRECATION")
         override fun onCharacteristicChanged(gatt: BluetoothGatt, characteristic: BluetoothGattCharacteristic) {
-            if (Build.VERSION.SDK_INT < 33 && characteristic.uuid == TX_ID) emit("onEKOOLBluetoothMessage",
-                JSONObject().put("peerId", id).put("text", String(characteristic.value ?: byteArrayOf(), StandardCharsets.UTF_8)).put("incoming", true))
+            if (Build.VERSION.SDK_INT < 33 && characteristic.uuid == TX_ID) {
+                val text = String(characteristic.value ?: byteArrayOf(), StandardCharsets.UTF_8)
+                if (text == "EKOOOL_ACCEPTED") emit("onEKOOLBluetoothState", JSONObject().put("status", "peer_accepted").put("peerId", id))
+                else emit("onEKOOLBluetoothMessage", JSONObject().put("peerId", id).put("text", text).put("incoming", true))
+            }
         }
     }
 
@@ -258,7 +270,31 @@ class BleDiscovery(private val activity: Activity, private val emit: (String, JS
         } catch (e: Exception) { "write_failed" }
     }
 
+    fun acceptPeer(peerId: String, accepted: Boolean) {
+        if (!accepted) {
+            acceptedPeers.remove(peerId)
+            disconnect(peerId)
+            state("connection_rejected", peerId)
+            return
+        }
+        acceptedPeers.add(peerId)
+        try {
+            val device = adapter?.getRemoteDevice(peerId)
+            if (device != null && gattServer != null) {
+                if (Build.VERSION.SDK_INT >= 33) gattServer!!.notifyCharacteristicChanged(device, txCharacteristic, false, "EKOOOL_ACCEPTED".toByteArray(StandardCharsets.UTF_8))
+                else {
+                    @Suppress("DEPRECATION")
+                    txCharacteristic.value = "EKOOOL_ACCEPTED".toByteArray(StandardCharsets.UTF_8)
+                    @Suppress("DEPRECATION")
+                    gattServer!!.notifyCharacteristicChanged(device, txCharacteristic, false)
+                }
+            }
+        } catch (_: Exception) {}
+        emit("onEKOOLBluetoothState", JSONObject().put("status", "accepted").put("peerId", peerId))
+    }
+
     fun disconnect(peerId: String) {
+        acceptedPeers.remove(peerId)
         peers.remove(peerId)?.let { try { it.disconnect(); it.close() } catch (_: Exception) {} }
         clients.remove(peerId)?.let { try { it.disconnect(); it.close() } catch (_: Exception) {} }
         notifying.remove(peerId)
@@ -278,7 +314,7 @@ class BleDiscovery(private val activity: Activity, private val emit: (String, JS
     fun close() {
         stopScan(); stopAdvertising()
         (peers.values + clients.values).distinct().forEach { try { it.disconnect(); it.close() } catch (_: Exception) {} }
-        peers.clear(); clients.clear()
+        peers.clear(); clients.clear(); acceptedPeers.clear()
         try { gattServer?.close() } catch (_: Exception) {}
         gattServer = null
     }
