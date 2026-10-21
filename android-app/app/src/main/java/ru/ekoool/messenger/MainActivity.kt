@@ -274,7 +274,7 @@ class BleDiscovery(private val activity: Activity, private val emit: (String, JS
         if (!accepted) {
             acceptedPeers.remove(peerId)
             disconnect(peerId)
-            state("connection_rejected", peerId)
+            emit("onEKOOLBluetoothState", JSONObject().put("status", "connection_rejected").put("peerId", peerId))
             return
         }
         acceptedPeers.add(peerId)
