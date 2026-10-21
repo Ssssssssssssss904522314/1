@@ -217,13 +217,7 @@ body:before,body:after{animation-duration:20s;animation-timing-function:cubic-be
 .ug-market-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
 @media(max-width:420px){.ug-market-grid{grid-template-columns:1fr}}
  .eplus-badge{display:inline-flex;align-items:center;justify-content:center;gap:3px;margin-left:5px;padding:2px 6px;border-radius:7px;background:#18a957;color:#fff;font-size:11px;font-weight:800;cursor:pointer;vertical-align:middle}.eplus-badge:hover{filter:brightness(1.08)}.eplus-number{display:inline-flex;align-items:center;padding:1px 4px;border-radius:5px;background:#ffffff2b;color:#fff;text-decoration:underline;cursor:pointer}.eplus-number:hover{background:#ffffff40}
-/* EKOOOL birthday tilt decorations */
-#birthdayDrift{position:fixed;inset:0;overflow:hidden;pointer-events:none;z-index:20;contain:layout paint}
-.bday-float{position:absolute;top:-12vh;left:var(--left);font-size:var(--size);opacity:.72;filter:drop-shadow(0 2px 3px #0002);will-change:transform;animation:bdayFall var(--duration) linear var(--delay) infinite;transform:translate3d(0,-15vh,0) rotate(0deg)}
-@keyframes bdayFall{0%{transform:translate3d(calc(var(--tilt-x,0px) * -0.2),-15vh,0) rotate(0deg)}25%{transform:translate3d(calc(var(--tilt-x,0px) * .35),18vh,0) rotate(65deg)}50%{transform:translate3d(calc(var(--tilt-x,0px) * .7),48vh,0) rotate(145deg)}75%{transform:translate3d(calc(var(--tilt-x,0px) * 1.1),76vh,0) rotate(245deg)}100%{transform:translate3d(calc(var(--tilt-x,0px) * 1.5),115vh,0) rotate(360deg)}}
-#birthdayDrift .bday-float:nth-child(3n){animation-name:bdayFallAlt}
-@keyframes bdayFallAlt{0%{transform:translate3d(calc(var(--tilt-x,0px) * .25),-12vh,0) rotate(0)}50%{transform:translate3d(calc(var(--tilt-x,0px) * -.8),50vh,0) rotate(-160deg)}100%{transform:translate3d(calc(var(--tilt-x,0px) * -1.4),115vh,0) rotate(-360deg)}}
-@media(prefers-reduced-motion:reduce){#birthdayDrift{display:none}}
+
 </style></style><style>
 #ekoool-install-app{position:fixed;right:18px;bottom:18px;z-index:9999;border:0;border-radius:14px;padding:12px 16px;background:linear-gradient(135deg,#5b7cff,#7b5cff);color:#fff;font:700 14px system-ui,sans-serif;box-shadow:0 8px 24px #5b6cff55;cursor:pointer}
 #ekoool-install-app:hover{filter:brightness(1.06)}@media(max-width:560px){#ekoool-install-app{right:12px;bottom:12px}}
@@ -367,7 +361,52 @@ function auth(mode='in',add){
  .eko-login-back{display:block;width:100%;margin-top:10px}
  @keyframes ekoLoginIn{from{opacity:0;transform:translateY(14px) scale(.97)}to{opacity:1;transform:none}}
  @media(max-width:520px){.eko-login-wrap{padding:22px 12px}.eko-login-card{padding:24px 18px 21px;border-radius:25px}.eko-login-logo{width:96px;height:96px}.eko-login-logo img{width:58px;height:58px}.eko-login-title{font-size:28px}}
- </style>
+ 
+/* ---- EKOOOL TikTok-inspired refresh: crisp surfaces, no glass ---- */
+:root{--bg:#08090d;--bg2:#0d0e13;--card:#15161d;--tx:#f6f6f8;--mut:#a1a1ad;--pr:#fe2c55;--me:#fe2c55;--meT:#fff;--th:#292a33;--sh:0 8px 24px rgba(0,0,0,.28)}
+:root[data-app-theme="white"]{--bg:#f6f6f8;--bg2:#fff;--card:#fff;--tx:#17171c;--mut:#71717c;--pr:#fe2c55;--th:#e8e8ed;--sh:0 6px 18px rgba(15,15,20,.08)}
+:root[data-app-theme="black"]{--bg:#08090d;--bg2:#0d0e13;--card:#15161d;--tx:#f6f6f8;--mut:#a1a1ad;--pr:#fe2c55;--th:#292a33;--sh:0 8px 24px rgba(0,0,0,.28)}
+:root[data-app-theme="purple"]{--pr:#fe2c55}
+:root[data-app-theme="red"]{--pr:#fe2c55}
+body{background:var(--bg)!important;background-image:none!important;font-family:Inter,system-ui,-apple-system,"Segoe UI",sans-serif;-webkit-font-smoothing:antialiased}
+body:before,body:after{display:none!important;animation:none!important}
+#app{background:var(--bg2)!important}
+@media(min-width:560px){#app{border-radius:20px!important;box-shadow:0 18px 60px rgba(0,0,0,.28)!important;background:var(--bg2)!important;backdrop-filter:none!important;-webkit-backdrop-filter:none!important}}
+.top,.bar,.nav,.row,.m,.ib,.pr,input.t,textarea.t,select.t,.top .home-search,.prem-emoji-choice{
+ backdrop-filter:none!important;-webkit-backdrop-filter:none!important;
+ border-color:var(--th)!important;box-shadow:none!important;
+}
+.top{background:var(--bg2)!important;border:0!important;border-bottom:1px solid var(--th)!important;border-radius:0!important;margin:0!important;padding:14px 16px!important}
+.top h1{font-weight:850;letter-spacing:-.45px}
+.top .home-search{background:var(--card)!important;border:1px solid var(--th)!important;border-radius:999px!important}
+.ib{background:var(--card)!important;border:1px solid var(--th)!important;border-radius:12px!important;transition:background .16s,border-color .16s,transform .16s!important}
+.ib:hover{background:var(--th)!important;transform:translateY(-1px)}
+.pr{background:var(--pr)!important;color:#fff!important;border:0!important;border-radius:12px!important;box-shadow:0 5px 14px rgba(254,44,85,.22)!important}
+input.t,textarea.t,select.t{background:var(--card)!important;border:1px solid var(--th)!important;border-radius:12px!important}
+input.t:focus,textarea.t:focus,select.t:focus,.bar input:focus{border-color:var(--pr)!important;box-shadow:0 0 0 3px rgba(254,44,85,.15)!important}
+.body{background:transparent!important;padding:12px 12px 16px!important}
+.row{background:var(--card)!important;border:1px solid var(--th)!important;border-radius:14px!important;margin-bottom:7px!important;padding:12px!important;box-shadow:none!important;overflow:hidden}
+.row:before,.row:after,.top:after,.bar:after,.nav:after,.m:before{display:none!important}
+.row:hover{box-shadow:none!important;border-color:rgba(254,44,85,.4)!important}
+.av{box-shadow:0 0 0 2px var(--bg2)!important}
+.m{background:#252630!important;color:var(--tx)!important;border:1px solid #33343f!important;box-shadow:none!important;border-radius:18px 18px 18px 5px!important}
+.m.me{background:var(--pr)!important;color:#fff!important;border-color:var(--pr)!important;border-radius:18px 18px 5px 18px!important}
+.bar{background:var(--bg2)!important;border:0!important;border-top:1px solid var(--th)!important;border-radius:0!important;margin:0!important;padding:10px!important;box-shadow:none!important}
+.bar input{background:var(--card)!important;border:1px solid var(--th)!important}
+.bar .ib{background:var(--card)!important;border:1px solid var(--th)!important}
+.nav{background:var(--bg2)!important;border:0!important;border-top:1px solid var(--th)!important;border-radius:0!important;margin:0!important;padding:6px 4px max(6px,env(safe-area-inset-bottom))!important;box-shadow:none!important}
+.nav .pill{background:rgba(254,44,85,.12)!important;border:1px solid rgba(254,44,85,.16)!important;border-radius:13px!important}
+.nav button{color:var(--mut)!important;border-radius:13px!important;font-size:10px!important}
+.nav .on{color:var(--pr)!important}
+.nav .on div{transform:translateY(-1px) scale(1.12)!important}
+.warn{background:#3a171f!important;color:#ff9cac!important}
+.cel{background:rgba(0,0,0,.72)!important;backdrop-filter:none!important}
+.cel .msg{background:var(--card)!important;border:1px solid var(--th)!important;box-shadow:none!important;backdrop-filter:none!important}
+#ekoOwnerBirthday{background:linear-gradient(110deg,#1b1b22,#25212a)!important;border:1px solid #3b2932!important;border-radius:14px!important;box-shadow:none!important;margin:8px 12px 0!important}
+#ekoOwnerBirthday>div{gap:12px}
+@media(max-width:559px){.top{padding:12px!important}.body{padding-left:10px!important;padding-right:10px!important}.nav{margin:0!important}}
+@media(prefers-reduced-motion:reduce){.body,.body.sr,.body.sl,.m:last-child{animation:none!important}}
+</style>
  <div class="eko-login-wrap">
   <div class="eko-login-card">
    ${add?'<button class="ib eko-login-back" id="bk">← Назад</button>':''}
@@ -1142,18 +1181,5 @@ async function adminUser(id){cache={};const u=await getUser(id);if(!u)return adm
  $('#dl').onclick=async()=>{if(!await askConfirm('Удалить '+id+' и все его сообщения?'))return;
   await delAcc(id);admin()}}
 
-/* Birthday confetti, candles, cakes and hearts drift with phone tilt */
-(function birthdayDrift(){
- if(document.getElementById('birthdayDrift'))return;
- const layer=document.createElement('div');layer.id='birthdayDrift';layer.setAttribute('aria-hidden','true');
- const symbols=['🎉','🕯️','🎂','💗','❤️','🎊','🧁','💕'];
- for(let i=0;i<18;i++){const e=document.createElement('span');e.className='bday-float';e.textContent=symbols[i%symbols.length];e.style.setProperty('--left',(Math.random()*100)+'%');e.style.setProperty('--size',(18+Math.random()*17)+'px');e.style.setProperty('--duration',(8+Math.random()*11)+'s');e.style.setProperty('--delay',(-Math.random()*18)+'s');layer.appendChild(e)}
- document.body.appendChild(layer);
- let asked=false;
- const listen=()=>{if(asked)return;asked=true;try{if(typeof DeviceOrientationEvent!=='undefined'&&typeof DeviceOrientationEvent.requestPermission==='function'){DeviceOrientationEvent.requestPermission().then(p=>{if(p==='granted')window.addEventListener('deviceorientation',tilt,{passive:true})}).catch(()=>{})}else window.addEventListener('deviceorientation',tilt,{passive:true})}catch(e){}};
- function tilt(e){if(typeof e.gamma!=='number')return;const x=Math.max(-35,Math.min(35,e.gamma))*2.1;layer.style.setProperty('--tilt-x',x+'px');layer.style.setProperty('--tilt-y',Math.max(-25,Math.min(25,Number(e.beta)||0))+'px')}
- document.addEventListener('pointerdown',listen,{once:true,passive:true});
- try{if(typeof DeviceOrientationEvent!=='undefined'&&typeof DeviceOrientationEvent.requestPermission!=='function')window.addEventListener('deviceorientation',tilt,{passive:true})}catch(e){}
-})();
 init();
 </script><script>(function(){setTimeout(function(){var a=document.getElementById("app"),f=document.getElementById("bootFallback");if(f&&a&&window.auth){try{window.auth()}catch(e){f.querySelector("p").textContent="Не удалось загрузить. Нажми «Открыть мессенджер»."}}},7000)})();</script><script src="/session-ui.js?v=3"></script></body></html>
