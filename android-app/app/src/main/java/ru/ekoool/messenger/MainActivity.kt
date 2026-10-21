@@ -168,8 +168,19 @@ class BleDiscovery(private val activity: Activity, private val emit: (String, JS
                 descriptor: BluetoothGattDescriptor, preparedWrite: Boolean, responseNeeded: Boolean,
                 offset: Int, value: ByteArray) {
                 if (descriptor.uuid == CCCD_ID) {
-                    if (value.contentEquals(BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE)) notifying.add(device.address)
-                    else notifying.remove(device.address)
+                    if (value.contentEquals(BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE)) {
+                        notifying.add(device.address)
+                        if (device.address in acceptedPeers) {
+                            val accepted = "EKOOOL_ACCEPTED".toByteArray(StandardCharsets.UTF_8)
+                            if (Build.VERSION.SDK_INT >= 33) gattServer?.notifyCharacteristicChanged(device, txCharacteristic, false, accepted)
+                            else {
+                                @Suppress("DEPRECATION")
+                                txCharacteristic.value = accepted
+                                @Suppress("DEPRECATION")
+                                gattServer?.notifyCharacteristicChanged(device, txCharacteristic, false)
+                            }
+                        }
+                    } else notifying.remove(device.address)
                 }
                 if (responseNeeded) gattServer?.sendResponse(device, requestId, BluetoothGatt.GATT_SUCCESS, offset, value)
             }
@@ -297,6 +308,7 @@ class BleDiscovery(private val activity: Activity, private val emit: (String, JS
         acceptedPeers.remove(peerId)
         peers.remove(peerId)?.let { try { it.disconnect(); it.close() } catch (_: Exception) {} }
         clients.remove(peerId)?.let { try { it.disconnect(); it.close() } catch (_: Exception) {} }
+        try { adapter?.getRemoteDevice(peerId)?.let { gattServer?.cancelConnection(it) } } catch (_: Exception) {}
         notifying.remove(peerId)
     }
 
