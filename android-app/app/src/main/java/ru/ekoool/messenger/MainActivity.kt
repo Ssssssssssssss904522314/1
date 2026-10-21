@@ -144,6 +144,7 @@ class BleDiscovery(private val activity: Activity, private val emit: (String, JS
                 } else if (newState == BluetoothProfile.STATE_DISCONNECTED) {
                     clients.remove(id)?.close()
                     notifying.remove(id)
+                    acceptedPeers.remove(id)
                     emit("onEKOOLBluetoothState", JSONObject().put("status", "peer_disconnected").put("peerId", id))
                 }
             }
