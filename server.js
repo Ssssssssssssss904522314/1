@@ -24,6 +24,9 @@ const TELEGRAM_REG_WEBHOOK_SECRET=process.env.TELEGRAM_REG_WEBHOOK_SECRET||'';
 const TELEGRAM_REG_WEBHOOK_URL=process.env.TELEGRAM_REG_WEBHOOK_URL||'https://ekool-server.onrender.com/api/telegram/registration-webhook';
 const TELEGRAM_REG_SITE_URL=process.env.TELEGRAM_REG_SITE_URL||'https://ekool-server.onrender.com/';
 const METERED_ICE_SERVERS=process.env.METERED_ICE_SERVERS||'';
+const BANKA_API_KEY=process.env.BANKA_API_KEY||'';
+const BANKA_WEBHOOK_SECRET=process.env.BANKA_WEBHOOK_SECRET||'';
+const BANKA_SHOP_ID=process.env.BANKA_SHOP_ID||'';
 
 const DONATE_URL=process.env.DONATE_URL||'https://ekool-site.onrender.com/';
 const TELEGRAM_ADMIN_IDS=String(process.env.TELEGRAM_ADMIN_IDS||'').split(',').map(x=>x.trim()).filter(Boolean);
@@ -321,6 +324,64 @@ function adminLoginAllowed(ip){
 
 
 app.get('/api/calls/config',async(req,res)=>{try{let iceServers=[];if(METERED_ICE_SERVERS){try{iceServers=JSON.parse(METERED_ICE_SERVERS)}catch(e){return res.status(500).json({error:'Invalid METERED_ICE_SERVERS JSON'})}}if(!Array.isArray(iceServers)||!iceServers.length)iceServers=[{urls:'stun:stun.l.google.com:19302'}];res.json({iceServers,turnConfigured:iceServers.some(x=>{const u=Array.isArray(x?.urls)?x.urls:[x?.urls];return u.some(v=>String(v||'').startsWith('turn'))})})}catch(e){res.status(500).json({error:'TURN config error'})}});
+
+
+app.post('/api/payments/banka/webhook',express.raw({type:'application/json',limit:'256kb'}),async(req,res)=>{
+  try{
+    if(!BANKA_WEBHOOK_SECRET)return res.status(503).send('BANKA webhook is not configured');
+    const signature=String(req.headers['x-webhook-signature']||'').trim().toLowerCase();
+    const raw=Buffer.isBuffer(req.body)?req.body:Buffer.from('');
+    const expected=crypto.createHmac('sha256',BANKA_WEBHOOK_SECRET).update(raw).digest('hex');
+    if(!signature||signature.length!==expected.length||!crypto.timingSafeEqual(Buffer.from(signature,'utf8'),Buffer.from(expected,'utf8')))return res.status(400).send('Invalid signature');
+    const event=JSON.parse(raw.toString('utf8'));
+    const eventId=String(event?.event_id||'').trim(),payment=event?.payment||{},orderId=String(payment.order_id||'').trim();
+    if(!eventId||!orderId)return res.status(400).send('Missing event or order id');
+    if(event.event_type!=='payment.paid'||payment.status!=='paid'){
+      const existing=await getDoc('banka_payments',orderId);
+      if(existing&&existing.status!=='paid')await patchDoc('banka_payments',orderId,{providerStatus:String(payment.status||event.event_type||'unknown'),updatedAt:Date.now()});
+      await putDoc('banka_events',eventId,{eventId,orderId,type:String(event.event_type||''),receivedAt:Date.now()});
+      return res.status(200).send('OK');
+    }
+    const order=await getDoc('banka_payments',orderId);
+    if(!order)return res.status(404).send('Order not found');
+    if(String(payment.currency||'').toUpperCase()!=='RUB'||Math.round(Number(payment.amount)*100)!==Math.round(Number(order.amountRub)*100)||String(payment.payment_id||'')!==String(order.paymentId||''))return res.status(400).send('Payment verification mismatch');
+    if(pool){
+      const client=await pool.connect();
+      try{
+        await client.query('BEGIN');
+        const ev=await client.query('SELECT id FROM ekoool_kv WHERE collection=$1 AND id=$2 FOR UPDATE',['banka_events',eventId]);
+        if(ev.rows.length){await client.query('COMMIT');return res.status(200).send('OK')}
+        const pr=await client.query('SELECT data FROM ekoool_kv WHERE collection=$1 AND id=$2 FOR UPDATE',['banka_payments',orderId]);
+        const freshOrder=pr.rows[0]?.data;
+        if(!freshOrder)throw new Error('Order not found');
+        if(freshOrder.status!=='paid'){
+          const ur=await client.query('SELECT data FROM ekoool_kv WHERE collection=$1 AND id=$2 FOR UPDATE',['users',String(freshOrder.uid)]);
+          const user=ur.rows[0]?.data;
+          if(!user)throw new Error('User not found');
+          if(String(payment.currency||'').toUpperCase()!=='RUB'||Math.round(Number(payment.amount)*100)!==Math.round(Number(freshOrder.amountRub)*100)||String(payment.payment_id||'')!==String(freshOrder.paymentId||''))throw new Error('Payment verification mismatch');
+          await client.query('UPDATE ekoool_kv SET data=$3 WHERE collection=$1 AND id=$2',['users',String(freshOrder.uid),JSON.stringify({...user,coins:Number(user.coins||0)+Number(freshOrder.coins)})]);
+          await client.query('UPDATE ekoool_kv SET data=$3 WHERE collection=$1 AND id=$2',['banka_payments',orderId,JSON.stringify({...freshOrder,status:'paid',paidAt:Date.now(),providerStatus:'paid'})]);
+          await client.query('INSERT INTO ekoool_kv(collection,id,data) VALUES($1,$2,$3)',['txs','banka_'+orderId,JSON.stringify({uid:String(freshOrder.uid),ts:Date.now(),amt:Number(freshOrder.coins),note:'Пополнение BANKA BOT · '+Number(freshOrder.amountRub)+' ₽',type:'banka_topup',orderId})]);
+        }
+        await client.query('INSERT INTO ekoool_kv(collection,id,data) VALUES($1,$2,$3)',['banka_events',eventId,JSON.stringify({eventId,orderId,type:String(event.event_type||''),receivedAt:Date.now()})]);
+        await client.query('COMMIT');
+      }catch(e){await client.query('ROLLBACK');throw e}finally{client.release()}
+    }else{
+      const existingEvent=await getDoc('banka_events',eventId);
+      if(existingEvent)return res.status(200).send('OK');
+      const freshOrder=await getDoc('banka_payments',orderId);
+      if(freshOrder.status!=='paid'){
+        const user=await getDoc('users',String(freshOrder.uid));
+        if(!user)throw new Error('User not found');
+        await patchDoc('users',String(freshOrder.uid),{coins:Number(user.coins||0)+Number(freshOrder.coins)});
+        await patchDoc('banka_payments',orderId,{status:'paid',paidAt:Date.now(),providerStatus:'paid'});
+        await putDoc('txs','banka_'+orderId,{uid:String(freshOrder.uid),ts:Date.now(),amt:Number(freshOrder.coins),note:'Пополнение BANKA BOT · '+Number(freshOrder.amountRub)+' ₽',type:'banka_topup',orderId});
+      }
+      await putDoc('banka_events',eventId,{eventId,orderId,type:String(event.event_type||''),receivedAt:Date.now()});
+    }
+    return res.status(200).send('OK');
+  }catch(e){console.error('BANKA webhook error:',e.message);return res.status(500).send('Webhook processing failed')}
+});
 
 app.use(express.json({limit:'12mb'}));
 const installSessionAuth=require('./session-auth.js');
@@ -678,6 +739,30 @@ function storePublicUser(u){
   return {id:u?.id||'',username:u?.username||'',name:u?.name||'',coins:Number(u?.coins||0),ecoton:Number(u?.ecoton||0),premium:!!(u?.premiumForever||u?.premiumUntil>Date.now())};
 }
 async function storeUser(req){return await storeAuth(req)}
+
+app.post('/api/payments/banka/create',async(req,res)=>{
+  try{
+    const user=await userAuth(req);
+    if(!user)return res.status(401).json({error:'Войдите в EKOOOL'});
+    if(!BANKA_API_KEY||!BANKA_WEBHOOK_SECRET||!BANKA_SHOP_ID)return res.status(503).json({error:'BANKA BOT не настроен на сервере'});
+    const amountRub=Number(req.body?.amountRub),packs={'10':1000,'50':5000,'100':10000,'500':50000};
+    if(!Object.prototype.hasOwnProperty.call(packs,String(amountRub)))return res.status(400).json({error:'Выберите доступный пакет пополнения'});
+    // Safe preflight: verify the live API key and webhook setup without creating a payment.
+    const accountResponse=await fetch('https://api.banka.bot/v1/account',{headers:{'Authorization':'Bearer '+BANKA_API_KEY}});
+    const account=await accountResponse.json().catch(()=>({}));
+    if(!accountResponse.ok)return res.status(503).json({error:accountResponse.status===401?'Ключ BANKA BOT недействителен или отозван':'Не удалось проверить подключение BANKA BOT'});
+    if(account.webhook_secret_issued!==true)return res.status(503).json({error:'В кабинете BANKA BOT не выпущен webhook-секрет'});
+    if(!Array.isArray(account.methods)||account.methods.length===0)return res.status(503).json({error:'Магазин BANKA BOT пока не принимает платежи'});
+    const orderId='banka_'+crypto.randomUUID(),idempotencyKey=crypto.randomUUID();
+    const payload={amount:amountRub,currency:'RUB',order_id:orderId,description:'Пополнение EKOOOL: '+packs[String(amountRub)]+' ЕКОКоинов',callback_url:'https://ekool-server.onrender.com/api/payments/banka/webhook',success_url:'https://ekool-server.onrender.com/?payment=return'};
+    const response=await fetch('https://api.banka.bot/v1/payments',{method:'POST',headers:{'Authorization':'Bearer '+BANKA_API_KEY,'Content-Type':'application/json','Idempotency-Key':idempotencyKey},body:JSON.stringify(payload)});
+    const data=await response.json().catch(()=>({}));
+    if(!response.ok||!data.payment_id||!data.payment_url)return res.status(502).json({error:'BANKA BOT не смог создать платёж',details:String(data.detail||data.message||data.error||('HTTP '+response.status)).slice(0,250)});
+    await putDoc('banka_payments',orderId,{id:orderId,uid:String(user.id),amountRub,coins:packs[String(amountRub)],status:'pending',paymentId:String(data.payment_id),paymentUrl:String(data.payment_url),orderCode:String(data.order_code||''),idempotencyKey,createdAt:Date.now(),providerStatus:String(data.status||'pending'),shopId:BANKA_SHOP_ID});
+    res.json({ok:true,orderId,paymentUrl:data.payment_url,amountRub,coins:packs[String(amountRub)]});
+  }catch(e){console.error('BANKA payment create error:',e.message);res.status(500).json({error:'Не удалось создать платёж. Попробуйте позже.'})}
+});
+
 app.get('/api/store/me',async(req,res)=>{
   try{
     const u=await storeUser(req);
