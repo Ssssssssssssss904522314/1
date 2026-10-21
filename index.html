@@ -216,7 +216,15 @@ body:before,body:after{animation-duration:20s;animation-timing-function:cubic-be
 
 .ug-market-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
 @media(max-width:420px){.ug-market-grid{grid-template-columns:1fr}}
- .eplus-badge{display:inline-flex;align-items:center;justify-content:center;gap:3px;margin-left:5px;padding:2px 6px;border-radius:7px;background:#18a957;color:#fff;font-size:11px;font-weight:800;cursor:pointer;vertical-align:middle}.eplus-badge:hover{filter:brightness(1.08)}.eplus-number{display:inline-flex;align-items:center;padding:1px 4px;border-radius:5px;background:#ffffff2b;color:#fff;text-decoration:underline;cursor:pointer}.eplus-number:hover{background:#ffffff40}</style></style><style>
+ .eplus-badge{display:inline-flex;align-items:center;justify-content:center;gap:3px;margin-left:5px;padding:2px 6px;border-radius:7px;background:#18a957;color:#fff;font-size:11px;font-weight:800;cursor:pointer;vertical-align:middle}.eplus-badge:hover{filter:brightness(1.08)}.eplus-number{display:inline-flex;align-items:center;padding:1px 4px;border-radius:5px;background:#ffffff2b;color:#fff;text-decoration:underline;cursor:pointer}.eplus-number:hover{background:#ffffff40}
+/* EKOOOL birthday tilt decorations */
+#birthdayDrift{position:fixed;inset:0;overflow:hidden;pointer-events:none;z-index:20;contain:layout paint}
+.bday-float{position:absolute;top:-12vh;left:var(--left);font-size:var(--size);opacity:.72;filter:drop-shadow(0 2px 3px #0002);will-change:transform;animation:bdayFall var(--duration) linear var(--delay) infinite;transform:translate3d(0,-15vh,0) rotate(0deg)}
+@keyframes bdayFall{0%{transform:translate3d(calc(var(--tilt-x,0px) * -0.2),-15vh,0) rotate(0deg)}25%{transform:translate3d(calc(var(--tilt-x,0px) * .35),18vh,0) rotate(65deg)}50%{transform:translate3d(calc(var(--tilt-x,0px) * .7),48vh,0) rotate(145deg)}75%{transform:translate3d(calc(var(--tilt-x,0px) * 1.1),76vh,0) rotate(245deg)}100%{transform:translate3d(calc(var(--tilt-x,0px) * 1.5),115vh,0) rotate(360deg)}}
+#birthdayDrift .bday-float:nth-child(3n){animation-name:bdayFallAlt}
+@keyframes bdayFallAlt{0%{transform:translate3d(calc(var(--tilt-x,0px) * .25),-12vh,0) rotate(0)}50%{transform:translate3d(calc(var(--tilt-x,0px) * -.8),50vh,0) rotate(-160deg)}100%{transform:translate3d(calc(var(--tilt-x,0px) * -1.4),115vh,0) rotate(-360deg)}}
+@media(prefers-reduced-motion:reduce){#birthdayDrift{display:none}}
+</style></style><style>
 #ekoool-install-app{position:fixed;right:18px;bottom:18px;z-index:9999;border:0;border-radius:14px;padding:12px 16px;background:linear-gradient(135deg,#5b7cff,#7b5cff);color:#fff;font:700 14px system-ui,sans-serif;box-shadow:0 8px 24px #5b6cff55;cursor:pointer}
 #ekoool-install-app:hover{filter:brightness(1.06)}@media(max-width:560px){#ekoool-install-app{right:12px;bottom:12px}}
 </style>
@@ -1111,6 +1119,7 @@ async function adminUser(id){cache={};const u=await getUser(id);if(!u)return adm
  <div style="display:grid;gap:8px">${Object.keys(L).filter(k=>k!=='owner'||isAdmin).map(k=>`<button class="ib" data-k="${k}">${L[k]}: ${u[k]?'СНЯТЬ':'выдать'}</button>`).join('')}</div>
  <p style="margin-top:16px"><b>Юзернеймы</b></p><div>${u.username?'<div class="note">@'+esc(u.username)+' (основной)</div>':''}${(u.extra||[]).map(x=>`<div class="row" style="cursor:default"><div style="flex:1">@${esc(x)}</div><button class="ib" data-rx="${esc(x)}">✕</button></div>`).join('')}</div><input class="t" id="xu" placeholder="Выдать юзернейм (до 3 доп.)"><button class="ib" id="xg">Выдать</button>
  ${isAdmin?`<p style="margin-top:16px"><b>💰 Баланс: ${u.coins||0} ЕКОКоинов</b></p><input class="t" id="ca" type="number" min="1" placeholder="Сумма"><button class="ib" id="cp">Начислить</button> <button class="ib" id="cm">Списать</button>
+ <p style="margin-top:16px"><b>🎂 Баланс: ${Number(u.daycoins||0)} Денькоинов</b></p><input class="t" id="dca" type="number" min="1" step="1" placeholder="Количество Денькоинов"><button class="ib" id="dcp">Начислить Денькоины</button> <button class="ib" id="dcm">Списать Денькоины</button>
  <p style="margin-top:16px"><b>★ Premium:</b> ${isPrem(u)?'до '+new Date(u.premiumUntil).toLocaleDateString():'нет'}</p><select id="pd" class="t"><option value="30">1 месяц</option><option value="90">3 месяца</option><option value="360">1 год</option></select><button class="ib" id="pg">Выдать Premium</button> <button class="ib" id="pr">Снять</button>
  <p style="margin-top:16px"><button class="ib" id="ad">${u.admin?'Убрать из админов':'Сделать админом'}</button></p><p><input class="t" id="np" placeholder="Новый пароль для пользователя"><button class="ib" id="rp">Сменить пароль</button></p>${['phone','phone2'].map((k,i)=>`<p style="margin-top:14px"><b>📞 Номер ${i+1}:</b> ${u[k]?fmtNum(u[k]):'нет'}</p><button class="ib" data-nr="${k}">Выдать случайный</button>${u[k]?` <button class="ib" data-nx="${k}">Снять</button>`:''}<input class="t" data-nu="${k}" placeholder="+888XXXXXXX — свой номер"><button class="ib" data-nc="${k}">Выдать этот номер</button>`).join('')}`:''}
  <p style="margin-top:16px"><b>Блок на время</b></p><select id="du" class="t"><option value="3600000">1 час</option><option value="86400000">1 день</option><option value="604800000">7 дней</option><option value="2592000000">30 дней</option></select>
@@ -1122,6 +1131,7 @@ async function adminUser(id){cache={};const u=await getUser(id);if(!u)return adm
   if((await db.doc('usernames/'+x).get()).exists)return alert('Юзернейм занят');await db.doc('usernames/'+x).set({uid:id});await up({extra:[...(u.extra||[]),x]})};
  document.querySelectorAll('[data-rx]').forEach(b=>b.onclick=async()=>{const x=b.dataset.rx;await db.doc('usernames/'+x).delete();await up({extra:(u.extra||[]).filter(y=>y!==x)})});
  const co=async sg=>{const n=parseInt($('#ca').value);if(!(n>0))return alert('Введите сумму');if(!await addCoins(id,sg*n,sg>0?'Начисление администратором':'Списание администратором'))return alert('Недостаточно средств');adminUser(id)};if(isAdmin){$('#cp').onclick=()=>co(1);$('#cm').onclick=()=>co(-1);
+ const dco=async sg=>{if(!isAdmin)return alert('Требуются права администратора');const n=Number($('#dca').value);if(!Number.isSafeInteger(n)||n<1)return alert('Введите целое количество Денькоинов');try{const ref=db.doc('users/'+id);await db.runTransaction(async tx=>{const s=await tx.get(ref);if(!s.exists)throw new Error('Пользователь не найден');const u0=s.data(),balance=Number(u0.daycoins||0),next=balance+sg*n;if(next<0)throw new Error('Недостаточно Денькоинов у пользователя');tx.update(ref,{daycoins:next,daycoinAdminUpdatedAt:Date.now()})});await db.doc('txs/t'+Date.now()+Math.random().toString(36).slice(2,6)).set({uid:id,ts:Date.now(),amt:sg*n,note:sg>0?'Начисление Денькоинов администратором':'Списание Денькоинов администратором',currency:'daycoins',adminId:me.id});adminUser(id)}catch(e){alert(e.message||'Не удалось изменить Денькоины')}};$('#dcp').onclick=()=>dco(1);$('#dcm').onclick=()=>dco(-1);
  $('#pg').onclick=async()=>{const d=+$('#pd').value,now=Date.now(),act=u.premiumUntil>now,q={premiumUntil:(act?u.premiumUntil:now)+d*864e5};if(!act){q.nextGrant=now;q.premiumStart=now;q.anonLeft=1}await up(q)};
  $('#pr').onclick=()=>up({premiumUntil:0,nextGrant:0});$('#ad').onclick=()=>up({admin:!u.admin});
  document.querySelectorAll('[data-nr]').forEach(b=>b.onclick=async()=>{if(await issueNumber(u,id,null,b.dataset.nr))adminUser(id)});
@@ -1131,5 +1141,19 @@ async function adminUser(id){cache={};const u=await getUser(id);if(!u)return adm
  $('#bl').onclick=()=>up({blockedUntil:Date.now()+ +$('#du').value});$('#ub').onclick=()=>up({blockedUntil:0});
  $('#dl').onclick=async()=>{if(!await askConfirm('Удалить '+id+' и все его сообщения?'))return;
   await delAcc(id);admin()}}
+
+/* Birthday confetti, candles, cakes and hearts drift with phone tilt */
+(function birthdayDrift(){
+ if(document.getElementById('birthdayDrift'))return;
+ const layer=document.createElement('div');layer.id='birthdayDrift';layer.setAttribute('aria-hidden','true');
+ const symbols=['🎉','🕯️','🎂','💗','❤️','🎊','🧁','💕'];
+ for(let i=0;i<18;i++){const e=document.createElement('span');e.className='bday-float';e.textContent=symbols[i%symbols.length];e.style.setProperty('--left',(Math.random()*100)+'%');e.style.setProperty('--size',(18+Math.random()*17)+'px');e.style.setProperty('--duration',(8+Math.random()*11)+'s');e.style.setProperty('--delay',(-Math.random()*18)+'s');layer.appendChild(e)}
+ document.body.appendChild(layer);
+ let asked=false;
+ const listen=()=>{if(asked)return;asked=true;try{if(typeof DeviceOrientationEvent!=='undefined'&&typeof DeviceOrientationEvent.requestPermission==='function'){DeviceOrientationEvent.requestPermission().then(p=>{if(p==='granted')window.addEventListener('deviceorientation',tilt,{passive:true})}).catch(()=>{})}else window.addEventListener('deviceorientation',tilt,{passive:true})}catch(e){}};
+ function tilt(e){if(typeof e.gamma!=='number')return;const x=Math.max(-35,Math.min(35,e.gamma))*2.1;layer.style.setProperty('--tilt-x',x+'px');layer.style.setProperty('--tilt-y',Math.max(-25,Math.min(25,Number(e.beta)||0))+'px')}
+ document.addEventListener('pointerdown',listen,{once:true,passive:true});
+ try{if(typeof DeviceOrientationEvent!=='undefined'&&typeof DeviceOrientationEvent.requestPermission!=='function')window.addEventListener('deviceorientation',tilt,{passive:true})}catch(e){}
+})();
 init();
 </script><script>(function(){setTimeout(function(){var a=document.getElementById("app"),f=document.getElementById("bootFallback");if(f&&a&&window.auth){try{window.auth()}catch(e){f.querySelector("p").textContent="Не удалось загрузить. Нажми «Открыть мессенджер»."}}},7000)})();</script><script src="/session-ui.js?v=3"></script></body></html>
