@@ -747,6 +747,12 @@ app.post('/api/payments/banka/create',async(req,res)=>{
     if(!BANKA_API_KEY||!BANKA_WEBHOOK_SECRET||!BANKA_SHOP_ID)return res.status(503).json({error:'BANKA BOT не настроен на сервере'});
     const amountRub=Number(req.body?.amountRub),packs={'10':1000,'50':5000,'100':10000,'500':50000};
     if(!Object.prototype.hasOwnProperty.call(packs,String(amountRub)))return res.status(400).json({error:'Выберите доступный пакет пополнения'});
+    // Safe preflight: verify the live API key and webhook setup without creating a payment.
+    const accountResponse=await fetch('https://api.banka.bot/v1/account',{headers:{'Authorization':'Bearer '+BANKA_API_KEY}});
+    const account=await accountResponse.json().catch(()=>({}));
+    if(!accountResponse.ok)return res.status(503).json({error:accountResponse.status===401?'Ключ BANKA BOT недействителен или отозван':'Не удалось проверить подключение BANKA BOT'});
+    if(account.webhook_secret_issued!==true)return res.status(503).json({error:'В кабинете BANKA BOT не выпущен webhook-секрет'});
+    if(!Array.isArray(account.methods)||account.methods.length===0)return res.status(503).json({error:'Магазин BANKA BOT пока не принимает платежи'});
     const orderId='banka_'+crypto.randomUUID(),idempotencyKey=crypto.randomUUID();
     const payload={amount:amountRub,currency:'RUB',order_id:orderId,description:'Пополнение EKOOOL: '+packs[String(amountRub)]+' ЕКОКоинов',callback_url:'https://ekool-server.onrender.com/api/payments/banka/webhook',success_url:'https://ekool-server.onrender.com/?payment=return'};
     const response=await fetch('https://api.banka.bot/v1/payments',{method:'POST',headers:{'Authorization':'Bearer '+BANKA_API_KEY,'Content-Type':'application/json','Idempotency-Key':idempotencyKey},body:JSON.stringify(payload)});
