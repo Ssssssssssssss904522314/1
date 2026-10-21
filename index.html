@@ -80,7 +80,7 @@ input.t:focus,textarea.t:focus,select.t:focus,.bar input:focus{border-color:var(
 .bar .pr{border-radius:50%;width:40px;height:40px;padding:0;display:inline-flex;align-items:center;justify-content:center}
 label.ib{display:inline-flex;align-items:center;justify-content:center;user-select:none}
 .nav{position:relative;margin:4px 14px calc(10px);padding:4px;border:1px solid var(--th);background:var(--card);border-radius:26px;box-shadow:var(--sh)}
-.nav .pill{position:absolute;top:4px;bottom:4px;left:4px;width:calc((100% - 8px)/5);border-radius:20px;background:linear-gradient(135deg,rgba(91,124,255,.16),rgba(123,92,255,.16));pointer-events:none}
+.nav .pill{position:absolute;top:4px;bottom:4px;left:4px;width:calc((100% - 8px)/6);border-radius:20px;background:linear-gradient(135deg,rgba(91,124,255,.16),rgba(123,92,255,.16));pointer-events:none}
 .nav button{position:relative;z-index:1;border-radius:20px;padding:7px 4px;font-weight:600;transition:color .25s}
 .nav button div{transition:transform .3s cubic-bezier(.3,1.4,.5,1)}
 .nav .on div{transform:translateY(-1px) scale(1.18)}
@@ -569,7 +569,7 @@ const nav=a=>`<div class="nav"><span class="pill"></span>${[['settings','⚙️'
 let lastTab;const bindNav=()=>{const on=document.querySelector('.nav .on'),ord=['settings','chats','ecoton','daycoins','purchase','profile'],cur=ord.indexOf(on&&on.dataset.n),b=$('.body'),pl=$('.nav .pill');
  if(b){b.classList.remove('sl','sr');if(lastTab!==undefined&&cur!==lastTab&&cur>=0)b.classList.add(cur>lastTab?'sr':'sl')}
  if(pl&&cur>=0){pl.style.transition='none';pl.style.transform='translateX('+(lastTab===undefined?cur:lastTab)*100+'%)';void pl.offsetWidth;pl.style.transition='transform .38s cubic-bezier(.25,1.2,.4,1)';pl.style.transform='translateX('+cur*100+'%)'}
- lastTab=cur;document.querySelectorAll('[data-n]').forEach(x=>x.onclick=()=>({chats:home,profile:profile,settings:settings,ecoton:ecoton,daycoins:daycoins}[x.dataset.n])())};
+ lastTab=cur;document.querySelectorAll('[data-n]').forEach(x=>x.onclick=()=>({chats:home,profile:profile,settings:settings,ecoton:ecoton,daycoins:daycoins,purchase:purchase}[x.dataset.n])())};
 
 const cid=(a,b)=>[a,b].sort().join('_');
 const SECRET_STORE='EKOOOL_SECRET_KEYS_V1';
