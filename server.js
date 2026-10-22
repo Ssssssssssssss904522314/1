@@ -365,13 +365,24 @@ app.post('/api/payments/banka/webhook',express.raw({type:'application/json',limi
             const base=Math.max(Number(user.premiumUntil||0),paidAt);
             updatedUser.premiumUntil=base+Number(freshOrder.months||0)*30*864e5;
             txRecord={uid:String(freshOrder.uid),ts:paidAt,amt:0,note:'Покупка EKOOOL Premium · '+Number(freshOrder.months)+' мес. · '+Number(freshOrder.amountRub)+' ₽',type:'banka_premium',orderId};
+            await client.query('UPDATE ekoool_kv SET data=$3 WHERE collection=$1 AND id=$2',['users',String(freshOrder.uid),JSON.stringify(updatedUser)]);
+            await client.query('INSERT INTO ekoool_kv(collection,id,data) VALUES($1,$2,$3)',['txs','banka_'+orderId,JSON.stringify(txRecord)]);
+          }else if(freshOrder.type==='card_topup'){
+            const cr=await client.query('SELECT data FROM ekoool_kv WHERE collection=$1 AND id=$2 FOR UPDATE',['ekoool_cards',String(freshOrder.uid)]);
+            const card=cr.rows[0]?.data;
+            if(!card||card.status!=='active')throw new Error('EKOOOL Card not found or inactive');
+            if(Number(freshOrder.amountRub)>1000&&card.ageVerified!==true)throw new Error('Age verification missing for large card top-up');
+            const amountKopecks=Math.round(Number(freshOrder.amountRub)*100);
+            await client.query('UPDATE ekoool_kv SET data=$3 WHERE collection=$1 AND id=$2',['ekoool_cards',String(freshOrder.uid),JSON.stringify({...card,balanceKopecks:Number(card.balanceKopecks||0)+amountKopecks,updatedAt:paidAt})]);
+            txRecord={uid:String(freshOrder.uid),ts:paidAt,amountKopecks,note:'Пополнение EKOOOL Card через BANKA BOT · '+Number(freshOrder.amountRub)+' ₽',type:'topup',orderId};
+            await client.query('INSERT INTO ekoool_kv(collection,id,data) VALUES($1,$2,$3)',['ekoool_card_txs','banka_'+orderId,JSON.stringify(txRecord)]);
           }else{
             updatedUser.coins=Number(user.coins||0)+Number(freshOrder.coins||0);
             txRecord={uid:String(freshOrder.uid),ts:paidAt,amt:Number(freshOrder.coins||0),note:'Пополнение BANKA BOT · '+Number(freshOrder.amountRub)+' ₽',type:'banka_topup',orderId};
+            await client.query('UPDATE ekoool_kv SET data=$3 WHERE collection=$1 AND id=$2',['users',String(freshOrder.uid),JSON.stringify(updatedUser)]);
+            await client.query('INSERT INTO ekoool_kv(collection,id,data) VALUES($1,$2,$3)',['txs','banka_'+orderId,JSON.stringify(txRecord)]);
           }
-          await client.query('UPDATE ekoool_kv SET data=$3 WHERE collection=$1 AND id=$2',['users',String(freshOrder.uid),JSON.stringify(updatedUser)]);
           await client.query('UPDATE ekoool_kv SET data=$3 WHERE collection=$1 AND id=$2',['banka_payments',orderId,JSON.stringify({...freshOrder,status:'paid',paidAt,providerStatus:'paid'})]);
-          await client.query('INSERT INTO ekoool_kv(collection,id,data) VALUES($1,$2,$3)',['txs','banka_'+orderId,JSON.stringify(txRecord)]);
         }
         await client.query('INSERT INTO ekoool_kv(collection,id,data) VALUES($1,$2,$3)',['banka_events',eventId,JSON.stringify({eventId,orderId,type:String(event.event_type||''),receivedAt:Date.now()})]);
         await client.query('COMMIT');
@@ -388,6 +399,13 @@ app.post('/api/payments/banka/webhook',express.raw({type:'application/json',limi
           const base=Math.max(Number(user.premiumUntil||0),paidAt);
           await patchDoc('users',String(freshOrder.uid),{premiumUntil:base+Number(freshOrder.months||0)*30*864e5});
           await putDoc('txs','banka_'+orderId,{uid:String(freshOrder.uid),ts:paidAt,amt:0,note:'Покупка EKOOOL Premium · '+Number(freshOrder.months)+' мес. · '+Number(freshOrder.amountRub)+' ₽',type:'banka_premium',orderId});
+        }else if(freshOrder.type==='card_topup'){
+          const card=await getDoc('ekoool_cards',String(freshOrder.uid));
+          if(!card||card.status!=='active')throw new Error('EKOOOL Card not found or inactive');
+          if(Number(freshOrder.amountRub)>1000&&card.ageVerified!==true)throw new Error('Age verification missing for large card top-up');
+          const amountKopecks=Math.round(Number(freshOrder.amountRub)*100);
+          await patchDoc('ekoool_cards',String(freshOrder.uid),{balanceKopecks:Number(card.balanceKopecks||0)+amountKopecks,updatedAt:paidAt});
+          await putDoc('ekoool_card_txs','banka_'+orderId,{uid:String(freshOrder.uid),ts:paidAt,amountKopecks,note:'Пополнение EKOOOL Card через BANKA BOT · '+Number(freshOrder.amountRub)+' ₽',type:'topup',orderId});
         }else{
           await patchDoc('users',String(freshOrder.uid),{coins:Number(user.coins||0)+Number(freshOrder.coins||0)});
           await putDoc('txs','banka_'+orderId,{uid:String(freshOrder.uid),ts:paidAt,amt:Number(freshOrder.coins||0),note:'Пополнение BANKA BOT · '+Number(freshOrder.amountRub)+' ₽',type:'banka_topup',orderId});
@@ -401,6 +419,8 @@ app.post('/api/payments/banka/webhook',express.raw({type:'application/json',limi
 });
 
 app.use(express.json({limit:'12mb'}));
+const installEkooolCard=require('./ekoool-card.js');
+installEkooolCard(app,{userAuth,getDoc,putDoc,patchDoc,getCollection,crypto,BANKA_API_KEY,BANKA_SHOP_ID,pool});
 const installSessionAuth=require('./session-auth.js');
 const installRegistrationBot=require('./telegram-registration-bot.js');
 app.get('/api/telegram/registration-bot',async(req,res)=>{if(!TELEGRAM_REG_BOT_USERNAME)return res.status(503).json({error:'Registration bot username is not configured'});res.json({ok:true,username:TELEGRAM_REG_BOT_USERNAME,botUrl:'https://t.me/'+TELEGRAM_REG_BOT_USERNAME});});
@@ -772,6 +792,12 @@ app.post('/api/payments/banka/create',async(req,res)=>{
       months=Number(req.body?.months);
       if(!Number.isSafeInteger(months)||months<1||months>24||amountRub!==months*50)return res.status(400).json({error:'Premium: от 1 до 24 месяцев, 50 ₽ за месяц'});
       description='EKOOOL Premium: '+months+' мес.';
+    }else if(productType==='card_topup'){
+      if(!Number.isSafeInteger(amountRub)||amountRub<1||amountRub>100000)return res.status(400).json({error:'Сумма пополнения должна быть от 1 до 100 000 ₽ целым числом'});
+      const card=await getDoc('ekoool_cards',String(user.id));
+      if(!card||card.status!=='active')return res.status(409).json({error:'Сначала откройте EKOOOL Card и выпустите активную карту'});
+      if(amountRub>1000&&card.ageVerified!==true)return res.status(403).json({error:'Для пополнения свыше 1 000 ₽ требуется подтверждение возраста 14+ у проверенного провайдера',code:'age_verification_required'});
+      description='Пополнение внутреннего баланса EKOOOL Card';
     }else return res.status(400).json({error:'Неизвестный тип покупки'});
     const accountResponse=await fetch('https://api.banka.bot/v1/account',{headers:{'Authorization':'Bearer '+BANKA_API_KEY}});
     const account=await accountResponse.json().catch(()=>({}));
