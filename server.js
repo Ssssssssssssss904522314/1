@@ -425,7 +425,7 @@ app.post('/api/payments/banka/webhook',express.raw({type:'application/json',limi
 
 app.use(express.json({limit:'12mb'}));
 const installEkooolCard=require('./ekoool-card.js');
-installEkooolCard(app,{userAuth,getDoc,putDoc,patchDoc,getCollection,crypto,BANKA_API_KEY,BANKA_SHOP_ID,YOTI_API_KEY,YOTI_SDK_ID,PUBLIC_BASE_URL,pool});
+installEkooolCard(app,{userAuth,getDoc,putDoc,patchDoc,getCollection,crypto,BANKA_API_KEY,BANKA_SHOP_ID,YOTI_API_KEY,YOTI_SDK_ID,PUBLIC_BASE_URL,pool,isAdmin});
 const installSessionAuth=require('./session-auth.js');
 const installRegistrationBot=require('./telegram-registration-bot.js');
 app.get('/api/telegram/registration-bot',async(req,res)=>{if(!TELEGRAM_REG_BOT_USERNAME)return res.status(503).json({error:'Registration bot username is not configured'});res.json({ok:true,username:TELEGRAM_REG_BOT_USERNAME,botUrl:'https://t.me/'+TELEGRAM_REG_BOT_USERNAME});});
