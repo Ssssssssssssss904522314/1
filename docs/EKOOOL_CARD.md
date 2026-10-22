@@ -11,7 +11,9 @@
 - BANKA top-up endpoint deliberately fails closed until BANKA's documented create-payment contract and webhook settlement are integrated. It never credits the balance from a client request.
 
 ## Not production-ready
-- BANKA Card top-ups are **not yet active**. Existing BANKA integration handles EKOCOINS/Premium and must not be assumed to support internal-card deposits.
+- The existing BANKA create-payment endpoint accepts `productType: 'card_topup'` for amounts from 1 to 100,000 RUB, checks the card status and enforces the 1,000 RUB age-verification gate.
+- The BANKA settlement webhook credits the internal card ledger only for a valid signed `payment.paid` event whose order ID, payment ID, currency, and amount match the stored order. PostgreSQL mode locks the order and card rows and records a per-order ledger transaction; duplicate events do not credit twice.
+- The card page redirects to the BANKA payment URL. The balance is never credited from the browser.
 - Age verification is **not yet active**. No selfie or AI age-estimate is accepted from the browser. Select and configure an age-verification provider with liveness and a documented callback/verification API before enabling the >1,000 RUB limit.
 - Internal purchase endpoint is a technical primitive, not yet connected to the actual Premium/store checkout catalogue. Callers must only pass server-authorized item IDs and prices; do not expose it as an unrestricted client-priced purchase endpoint.
 - The JSON-file fallback cannot provide robust atomic concurrent spending. Production money-like balances must use PostgreSQL transactions.
@@ -24,4 +26,4 @@
 - `POST /api/ekoool-card/age-verification/start` — currently returns a safe 503 until provider configured.
 - `POST /api/ekoool-card/purchase` — internal purchase debit primitive; must be wired only to trusted server-side catalogue prices.
 
-Do not merge/deploy as a finished payment feature until BANKA integration, provider-backed age checks, transactional settlement, tests, and checkout integration are complete.
+The BANKA payment creation/settlement path is wired to the existing provider integration, but has not yet been verified with a live payment. The >1,000 RUB limit remains blocked until a real age-verification provider is integrated. Do not describe age verification as active.
