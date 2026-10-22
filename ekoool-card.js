@@ -173,12 +173,12 @@ module.exports = function installEkooolCard(app, deps) {
       if (typeof isAdmin !== 'function' || !isAdmin(req)) return res.status(401).json({ error: 'Только администратор.' });
       const amountRub = Number(req.body?.amountRub);
       const reason = String(req.body?.reason || '').trim().slice(0, 160);
-      const targetCardNumber = String(req.body?.targetCardNumber || '666600001111').replace(/\\s+/g, '');
+      const targetCardNumber = String(req.body?.targetCardNumber || '666600001111').replace(/\s+/g, '');
       if (!Number.isSafeInteger(amountRub) || amountRub < 1 || amountRub > 1000000) {
         return res.status(400).json({ error: 'Введите целую сумму от 1 до 1 000 000 ₽.' });
       }
       if (!reason) return res.status(400).json({ error: 'Укажите основание начисления.' });
-      if (!/^\\d{12}$/.test(targetCardNumber) && !/^5112\\d{12}$/.test(targetCardNumber)) {
+      if (!/^\d{12}$/.test(targetCardNumber) && !/^5112\d{12}$/.test(targetCardNumber)) {
         return res.status(400).json({ error: 'Введите номер карты пользователя EKOOOL (16 цифр) или кошелька администратора 666600001111.' });
       }
       const adminTarget = targetCardNumber === '666600001111';
