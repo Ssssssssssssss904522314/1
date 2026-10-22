@@ -189,6 +189,68 @@ module.exports = function installEkooolCard(app, deps) {
     } catch (e) { res.status(500).json({ error: 'Не удалось начать проверку возраста' }); }
   });
 
+  app.post('/api/ekoool-card/refund', async (req, res) => {
+    try {
+      const user = await currentUser(req, res); if (!user) return;
+      const resolved = await resolveCard(user.id, req.body?.cardId);
+      if (!resolved) return res.status(404).json({ error: 'Карта не найдена.' });
+      if (!verifyPin(resolved.card, req.body?.pin)) return res.status(403).json({ error: 'Введите правильный PIN-код. Возврат отменён.', code: 'invalid_pin' });
+
+      // Internal transfer only: 1 RUB = 100 EKOCoins. No cash payout is performed.
+      if (deps.pool) {
+        const client = await deps.pool.connect();
+        try {
+          await client.query('BEGIN');
+          const cr = await client.query('SELECT data FROM ekoool_kv WHERE collection=$1 AND id=$2 FOR UPDATE', ['ekoool_cards', resolved.key]);
+          const freshCard = cr.rows[0]?.data;
+          const ur = await client.query('SELECT data FROM ekoool_kv WHERE collection=$1 AND id=$2 FOR UPDATE', ['users', String(user.id)]);
+          const freshUser = ur.rows[0]?.data;
+          if (!freshCard || String(freshCard.uid) !== String(user.id) || !freshUser) {
+            await client.query('ROLLBACK');
+            return res.status(404).json({ error: 'Карта или аккаунт не найдены.' });
+          }
+          if (!verifyPin(freshCard, req.body?.pin)) {
+            await client.query('ROLLBACK');
+            return res.status(403).json({ error: 'Неверный PIN-код. Возврат отменён.', code: 'invalid_pin' });
+          }
+          const amountKopecks = Math.floor(Number(freshCard.balanceKopecks || 0));
+          if (!Number.isSafeInteger(amountKopecks) || amountKopecks <= 0) {
+            await client.query('ROLLBACK');
+            return res.status(409).json({ error: 'На карте нет средств для возврата.' });
+          }
+          const ts = Date.now(), txId = 'card_refund_' + crypto.randomBytes(12).toString('hex');
+          const updatedCard = { ...freshCard, balanceKopecks: 0, updatedAt: ts };
+          const updatedUser = { ...freshUser, coins: Number(freshUser.coins || 0) + amountKopecks };
+          await client.query('UPDATE ekoool_kv SET data=$3 WHERE collection=$1 AND id=$2', ['ekoool_cards', resolved.key, JSON.stringify(updatedCard)]);
+          await client.query('UPDATE ekoool_kv SET data=$3 WHERE collection=$1 AND id=$2', ['users', String(user.id), JSON.stringify(updatedUser)]);
+          await client.query('INSERT INTO ekoool_kv(collection,id,data) VALUES($1,$2,$3)', ['ekoool_card_txs', txId, JSON.stringify({ uid: String(user.id), cardId: resolved.card.cardId, type: 'refund_to_balance', amountKopecks: -amountKopecks, note: 'Возврат остатка карты на баланс EKOOOL', ts })]);
+          await client.query('INSERT INTO ekoool_kv(collection,id,data) VALUES($1,$2,$3)', ['txs', txId, JSON.stringify({ uid: String(user.id), ts, amt: amountKopecks, type: 'card_refund', note: 'Возврат с EKOOOL Card · ' + amountKopecks + ' ЭКОКоинов' })]);
+          await client.query('COMMIT');
+          return res.json({ ok: true, amountKopecks, coinsAdded: amountKopecks, balanceKopecks: 0, message: 'Возвращено на баланс EKOOOL: ' + amountKopecks.toLocaleString('ru-RU') + ' ЭКОКоинов.' });
+        } catch (e) {
+          await client.query('ROLLBACK');
+          throw e;
+        } finally { client.release(); }
+      }
+
+      const freshCard = await getDoc('ekoool_cards', resolved.key);
+      const freshUser = await getDoc('users', String(user.id));
+      if (!freshCard || String(freshCard.uid) !== String(user.id) || !freshUser) return res.status(404).json({ error: 'Карта или аккаунт не найдены.' });
+      if (!verifyPin(freshCard, req.body?.pin)) return res.status(403).json({ error: 'Неверный PIN-код. Возврат отменён.', code: 'invalid_pin' });
+      const amountKopecks = Math.floor(Number(freshCard.balanceKopecks || 0));
+      if (!Number.isSafeInteger(amountKopecks) || amountKopecks <= 0) return res.status(409).json({ error: 'На карте нет средств для возврата.' });
+      const ts = Date.now(), txId = 'card_refund_' + crypto.randomBytes(12).toString('hex');
+      await patchDoc('ekoool_cards', resolved.key, { balanceKopecks: 0, updatedAt: ts });
+      await patchDoc('users', String(user.id), { coins: Number(freshUser.coins || 0) + amountKopecks });
+      await putDoc('ekoool_card_txs', txId, { uid: String(user.id), cardId: resolved.card.cardId, type: 'refund_to_balance', amountKopecks: -amountKopecks, note: 'Возврат остатка карты на баланс EKOOOL', ts });
+      await putDoc('txs', txId, { uid: String(user.id), ts, amt: amountKopecks, type: 'card_refund', note: 'Возврат с EKOOOL Card · ' + amountKopecks + ' ЭКОКоинов' });
+      return res.json({ ok: true, amountKopecks, coinsAdded: amountKopecks, balanceKopecks: 0, message: 'Возвращено на баланс EKOOOL: ' + amountKopecks.toLocaleString('ru-RU') + ' ЭКОКоинов.' });
+    } catch (e) {
+      console.error('EKOOOL Card refund failed:', e.message);
+      return res.status(500).json({ error: 'Не удалось вернуть остаток на баланс. Средства не должны быть списаны повторно.' });
+    }
+  });
+
   app.post('/api/ekoool-card/purchase', async (req, res) => {
     try {
       const user = await currentUser(req, res); if (!user) return;
