@@ -26,6 +26,9 @@ const TELEGRAM_REG_SITE_URL=process.env.TELEGRAM_REG_SITE_URL||'https://ekool-se
 const METERED_ICE_SERVERS=process.env.METERED_ICE_SERVERS||'';
 const BANKA_API_KEY=process.env.BANKA_API_KEY||'';
 const BANKA_WEBHOOK_SECRET=process.env.BANKA_WEBHOOK_SECRET||'';
+const YOTI_API_KEY=process.env.YOTI_API_KEY||'';
+const YOTI_SDK_ID=process.env.YOTI_SDK_ID||'';
+const PUBLIC_BASE_URL=process.env.PUBLIC_BASE_URL||'https://ekool-server.onrender.com';
 const BANKA_SHOP_ID=process.env.BANKA_SHOP_ID||'';
 
 const DONATE_URL=process.env.DONATE_URL||'https://ekool-site.onrender.com/';
@@ -422,7 +425,7 @@ app.post('/api/payments/banka/webhook',express.raw({type:'application/json',limi
 
 app.use(express.json({limit:'12mb'}));
 const installEkooolCard=require('./ekoool-card.js');
-installEkooolCard(app,{userAuth,getDoc,putDoc,patchDoc,getCollection,crypto,BANKA_API_KEY,BANKA_SHOP_ID,pool});
+installEkooolCard(app,{userAuth,getDoc,putDoc,patchDoc,getCollection,crypto,BANKA_API_KEY,BANKA_SHOP_ID,YOTI_API_KEY,YOTI_SDK_ID,PUBLIC_BASE_URL,pool});
 const installSessionAuth=require('./session-auth.js');
 const installRegistrationBot=require('./telegram-registration-bot.js');
 app.get('/api/telegram/registration-bot',async(req,res)=>{if(!TELEGRAM_REG_BOT_USERNAME)return res.status(503).json({error:'Registration bot username is not configured'});res.json({ok:true,username:TELEGRAM_REG_BOT_USERNAME,botUrl:'https://t.me/'+TELEGRAM_REG_BOT_USERNAME});});
