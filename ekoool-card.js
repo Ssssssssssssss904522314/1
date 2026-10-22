@@ -142,7 +142,7 @@ module.exports = function installEkooolCard(app, deps) {
           await client.query('ROLLBACK');
           return res.status(403).json({ error: 'Карта, срок действия или PIN-код не прошли проверку. Перевод отменён.' });
         }
-        if (!recipient || recipient.cardNumber !== recipientNumber || recipient.status !== 'active' || Number(recipient.balanceKopecks || 0) < 0) {
+        if (!recipient || recipient.cardNumber !== recipientNumber || recipient.status !== 'active' || Number(recipient.expiresAt || (Number(recipient.createdAt || 0) + YEAR_MS)) <= now || Number(recipient.balanceKopecks || 0) < 0) {
           await client.query('ROLLBACK');
           return res.status(409).json({ error: 'Карта получателя недоступна. Перевод отменён.' });
         }
