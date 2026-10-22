@@ -166,6 +166,35 @@ module.exports = function installEkooolCard(app, deps) {
     } catch (e) { res.status(500).json({ error: 'Не удалось сохранить PIN-код.' }); }
   });
 
+  // Safe payout preflight: verifies BANKA API access and balance endpoint only. Never creates a payout.
+  app.post('/api/ekoool-card/payout/check', async (req, res) => {
+    try {
+      const user = await currentUser(req, res); if (!user) return;
+      if (!BANKA_API_KEY || !BANKA_SHOP_ID) return res.status(503).json({ error: 'BANKA не настроена на сервере. Перевод не создан.' });
+      const [accountResp, balanceResp] = await Promise.all([
+        fetch('https://api.banka.bot/v1/account', { headers: { Authorization: 'Bearer ' + BANKA_API_KEY, Accept: 'application/json' }, signal: AbortSignal.timeout(8000) }),
+        fetch('https://api.banka.bot/v1/balance', { headers: { Authorization: 'Bearer ' + BANKA_API_KEY, Accept: 'application/json' }, signal: AbortSignal.timeout(8000) })
+      ]);
+      const account = await accountResp.json().catch(() => ({}));
+      const balance = await balanceResp.json().catch(() => ({}));
+      if (!accountResp.ok) return res.status(accountResp.status === 401 ? 502 : 503).json({ error: accountResp.status === 401 ? 'BANKA отклонила API-ключ. Перевод не создан.' : 'BANKA временно не ответила на проверку ключа. Перевод не создан.' });
+      if (!balanceResp.ok) return res.status(503).json({ error: 'Ключ работает, но баланс BANKA сейчас проверить не удалось. Перевод не создан.' });
+      const availableRaw = balance.available ?? balance.rub?.available ?? balance.balances?.rub?.available ?? null;
+      const available = availableRaw == null ? null : Number(String(availableRaw));
+      return res.json({
+        ok: true,
+        keyValid: true,
+        balanceEndpointReachable: true,
+        payoutMethodAvailable: Array.isArray(account.methods) ? account.methods.includes('card') : null,
+        availableBalancePositive: Number.isFinite(available) ? available > 0 : null,
+        payoutCreated: false,
+        message: 'Проверка соединения успешна. Реальная выплата НЕ создавалась и деньги не списывались. Право на выплаты и лимит BANKA ещё требуют отдельной проверки.'
+      });
+    } catch (e) {
+      return res.status(503).json({ error: 'Не удалось связаться с BANKA. Выплата не создавалась, деньги не списывались.' });
+    }
+  });
+
   app.post('/api/ekoool-card/topup', async (req, res) => {
     try {
       const user = await currentUser(req, res); if (!user) return;
