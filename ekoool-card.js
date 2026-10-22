@@ -2,7 +2,7 @@
 
 // EKOOOL Card is an internal closed-loop balance, not a bank-issued payment card.
 module.exports = function installEkooolCard(app, deps) {
-  const { userAuth, getDoc, putDoc, patchDoc, getCollection, crypto, BANKA_API_KEY, BANKA_SHOP_ID, YOTI_API_KEY, YOTI_SDK_ID } = deps;
+  const { userAuth, getDoc, putDoc, patchDoc, getCollection, crypto, BANKA_API_KEY, BANKA_SHOP_ID, YOTI_API_KEY, YOTI_SDK_ID, isAdmin } = deps;
   const CARD_PREFIX = '5112';
   const TOPUP_LIMIT_RUB = 1000;
   const YEAR_MS = 365 * 24 * 60 * 60 * 1000;
@@ -99,6 +99,89 @@ module.exports = function installEkooolCard(app, deps) {
         .slice(0, 50).map(x => ({ type: x.data.type, cardId: x.data.cardId || 'primary', amountKopecks: Number(x.data.amountKopecks || 0), note: String(x.data.note || ''), ts: Number(x.data.ts || 0) }));
       res.json({ ok: true, card: publicCard(selected.card), cards: cards.map(x => publicCard(x.card)), transactions: txs, topupLimitRub: TOPUP_LIMIT_RUB, ageVerificationConfigured: !!(YOTI_API_KEY && YOTI_SDK_ID) });
     } catch (e) { res.status(500).json({ error: 'Не удалось загрузить EKOOOL Card' }); }
+  });
+
+
+  // Internal transfers are enabled only with PostgreSQL transactions to prevent double spending.
+  app.post('/api/ekoool-card/transfer', async (req, res) => {
+    try {
+      const user = await currentUser(req, res); if (!user) return;
+      if (!deps.pool) return res.status(503).json({ error: 'Переводы временно недоступны: требуется транзакционное хранилище. Баланс не изменён.' });
+      const amountRub = Number(req.body?.amountRub);
+      const pin = String(req.body?.pin || '');
+      const recipientNumber = String(req.body?.recipientNumber || '').replace(/\s+/g, '');
+      if (!Number.isSafeInteger(amountRub) || amountRub < 1 || amountRub > 100000) return res.status(400).json({ error: 'Введите сумму от 1 до 100 000 ₽ целым числом.' });
+      if (!validPin(pin)) return res.status(400).json({ error: 'Введите PIN-код из 4–6 цифр.' });
+      if (!/^\d{12}$/.test(recipientNumber) && !/^5112\d{12}$/.test(recipientNumber)) return res.status(400).json({ error: 'Укажите номер карты EKOOOL из 16 цифр или номер администратора из 12 цифр.' });
+      const source = await resolveCard(user.id, req.body?.cardId);
+      if (!source) return res.status(404).json({ error: 'Ваша карта не найдена.' });
+      if (source.card.cardNumber === recipientNumber) return res.status(400).json({ error: 'Нельзя переводить на эту же карту.' });
+      const adminRecipient = recipientNumber === '666600001111';
+      if (!adminRecipient && !/^5112\d{12}$/.test(recipientNumber)) return res.status(404).json({ error: 'Номер получателя не найден.' });
+      const docs = await getCollection('ekoool_cards');
+      let recipientDoc = adminRecipient ? docs.find(x => x.id === '__ekoool_admin_wallet__') : docs.find(x => String(x.data?.cardNumber || '') === recipientNumber);
+      if (!recipientDoc && adminRecipient) {
+        const wallet = { uid: '__ekoool_admin_wallet__', cardId: 'admin', cardNumber: '666600001111', balanceKopecks: 0, status: 'active', createdAt: Date.now(), expiresAt: Date.now() + 100 * YEAR_MS, adminWallet: true };
+        await putDoc('ekoool_cards', '__ekoool_admin_wallet__', wallet);
+        recipientDoc = { id: '__ekoool_admin_wallet__', data: wallet };
+      }
+      if (!recipientDoc) return res.status(404).json({ error: 'Карта получателя не найдена.' });
+      if (!adminRecipient && String(recipientDoc.data?.uid) === String(user.id)) return res.status(400).json({ error: 'Выберите другую карту получателя.' });
+      const sourceKey = source.key, targetKey = recipientDoc.id;
+      if (sourceKey === targetKey) return res.status(400).json({ error: 'Нельзя переводить на эту же карту.' });
+      const amountKopecks = amountRub * 100;
+      const client = await deps.pool.connect();
+      try {
+        await client.query('BEGIN');
+        const keys = [sourceKey, targetKey].sort();
+        const rows = await client.query('SELECT id,data FROM ekoool_kv WHERE collection=$1 AND id = ANY($2::text[]) ORDER BY id FOR UPDATE', ['ekoool_cards', keys]);
+        const byId = new Map(rows.rows.map(row => [String(row.id), row.data]));
+        const sender = byId.get(sourceKey), recipient = byId.get(targetKey);
+        const now = Date.now();
+        if (!sender || String(sender.uid) !== String(user.id) || sender.status !== 'active' || Number(sender.expiresAt || 0) <= now || !verifyPin(sender, pin)) {
+          await client.query('ROLLBACK');
+          return res.status(403).json({ error: 'Карта, срок действия или PIN-код не прошли проверку. Перевод отменён.' });
+        }
+        if (!recipient || recipient.cardNumber !== recipientNumber || recipient.status !== 'active' || Number(recipient.balanceKopecks || 0) < 0) {
+          await client.query('ROLLBACK');
+          return res.status(409).json({ error: 'Карта получателя недоступна. Перевод отменён.' });
+        }
+        if (Number(sender.balanceKopecks || 0) < amountKopecks) {
+          await client.query('ROLLBACK');
+          return res.status(409).json({ error: 'Недостаточно средств на карте.' });
+        }
+        const txId = 'transfer_' + crypto.randomBytes(12).toString('hex');
+        const senderNext = { ...sender, balanceKopecks: Number(sender.balanceKopecks || 0) - amountKopecks, updatedAt: now };
+        const recipientNext = { ...recipient, balanceKopecks: Number(recipient.balanceKopecks || 0) + amountKopecks, updatedAt: now };
+        await client.query('UPDATE ekoool_kv SET data=$3 WHERE collection=$1 AND id=$2', ['ekoool_cards', sourceKey, JSON.stringify(senderNext)]);
+        await client.query('UPDATE ekoool_kv SET data=$3 WHERE collection=$1 AND id=$2', ['ekoool_cards', targetKey, JSON.stringify(recipientNext)]);
+        await client.query('INSERT INTO ekoool_kv(collection,id,data) VALUES($1,$2,$3)', ['ekoool_card_txs', txId + '_out', JSON.stringify({ uid: String(user.id), cardId: source.card.cardId, type: 'transfer_out', amountKopecks: -amountKopecks, note: 'Перевод на ' + recipientNumber, recipientNumber, transferId: txId, ts: now })]);
+        await client.query('INSERT INTO ekoool_kv(collection,id,data) VALUES($1,$2,$3)', ['ekoool_card_txs', txId + '_in', JSON.stringify({ uid: String(recipient.uid), cardId: recipient.cardId || 'admin', type: 'transfer_in', amountKopecks, note: 'Перевод от ' + String(sender.cardNumber), senderNumber: String(sender.cardNumber), transferId: txId, ts: now })]);
+        await client.query('COMMIT');
+        return res.json({ ok: true, receipt: { transferId: txId, status: 'Успешно', amountRub, from: sender.cardNumber, to: recipientNumber, ts: now, currency: 'RUB' }, balanceKopecks: senderNext.balanceKopecks });
+      } catch (err) { await client.query('ROLLBACK'); throw err; } finally { client.release(); }
+    } catch (e) {
+      console.error('EKOOOL Card transfer failed:', e.message);
+      return res.status(500).json({ error: 'Перевод не выполнен. Проверьте историю операций; повторите позже.' });
+    }
+  });
+
+  app.get('/api/ekoool-card/admin/cards', async (req, res) => {
+    try {
+      if (typeof isAdmin !== 'function' || !isAdmin(req)) return res.status(401).json({ error: 'Только администратор.' });
+      const q = String(req.query?.q || '').trim().toLowerCase().slice(0, 100);
+      const docs = await getCollection('ekoool_cards');
+      const cards = docs.filter(x => x.data && (!q || String(x.data.cardNumber || '').toLowerCase().includes(q) || String(x.data.uid || '').toLowerCase().includes(q)))
+        .slice(0, 100).map(x => {
+          const c = normalizeCard(x.data, x.id);
+          return { uid: String(c.uid || ''), cardId: c.cardId, cardNumber: String(c.cardNumber || ''), balanceKopecks: Number(c.balanceKopecks || 0), status: c.status, expiresAt: Number(c.expiresAt || 0), createdAt: Number(c.createdAt || 0), pinSet: !!c.pinHash, ageVerified: c.ageVerified === true, adminWallet: c.adminWallet === true };
+        });
+      const txdocs = await getCollection('ekoool_card_txs');
+      const transactions = txdocs.map(x => ({ ...(x.data || {}), id: x.id })).filter(t => !q || String(t.uid || '').toLowerCase().includes(q) || String(t.note || '').toLowerCase().includes(q) || String(t.senderNumber || '').includes(q) || String(t.recipientNumber || '').includes(q))
+        .sort((a,b) => Number(b.ts || 0) - Number(a.ts || 0)).slice(0, 100)
+        .map(t => ({ uid: String(t.uid || ''), cardId: String(t.cardId || ''), type: String(t.type || ''), amountKopecks: Number(t.amountKopecks || 0), note: String(t.note || ''), ts: Number(t.ts || 0), transferId: String(t.transferId || '') }));
+      return res.json({ ok: true, cards, transactions, adminCardNumber: '666600001111' });
+    } catch (e) { return res.status(500).json({ error: 'Не удалось загрузить данные ECard.' }); }
   });
 
   app.post('/api/ekoool-card/close', async (req, res) => {
