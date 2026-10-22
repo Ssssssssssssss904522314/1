@@ -166,55 +166,71 @@ module.exports = function installEkooolCard(app, deps) {
     }
   });
 
-  // Admin-only manual credit to the internal administrator wallet. This does not represent real money.
+  // Admin-only internal credit to either the admin wallet or an existing user's ECard.
+  // This changes internal ledger balance only; it does not move real money.
   app.post('/api/ekoool-card/admin/credit', async (req, res) => {
     try {
       if (typeof isAdmin !== 'function' || !isAdmin(req)) return res.status(401).json({ error: 'Только администратор.' });
       const amountRub = Number(req.body?.amountRub);
       const reason = String(req.body?.reason || '').trim().slice(0, 160);
+      const targetCardNumber = String(req.body?.targetCardNumber || '666600001111').replace(/\\s+/g, '');
       if (!Number.isSafeInteger(amountRub) || amountRub < 1 || amountRub > 1000000) {
         return res.status(400).json({ error: 'Введите целую сумму от 1 до 1 000 000 ₽.' });
       }
       if (!reason) return res.status(400).json({ error: 'Укажите основание начисления.' });
+      if (!/^\\d{12}$/.test(targetCardNumber) && !/^5112\\d{12}$/.test(targetCardNumber)) {
+        return res.status(400).json({ error: 'Введите номер карты пользователя EKOOOL (16 цифр) или кошелька администратора 666600001111.' });
+      }
+      const adminTarget = targetCardNumber === '666600001111';
       const walletId = '__ekoool_admin_wallet__';
-      const cardNumber = '666600001111';
       const now = Date.now();
       const amountKopecks = amountRub * 100;
       if (!Number.isSafeInteger(amountKopecks)) return res.status(400).json({ error: 'Сумма слишком велика.' });
-      const existing = await getDoc('ekoool_cards', walletId);
-      const initialWallet = existing || {
-        uid: '__ekoool_admin_wallet__', cardId: 'admin', cardNumber,
+      const docs = await getCollection('ekoool_cards');
+      let targetDoc = adminTarget
+        ? docs.find(x => x.id === walletId)
+        : docs.find(x => String(x.data?.cardNumber || '') === targetCardNumber);
+      if (!adminTarget && !targetDoc) return res.status(404).json({ error: 'Карта пользователя не найдена. Проверьте номер карты.' });
+      const targetId = adminTarget ? walletId : targetDoc.id;
+      const initialWallet = adminTarget ? (targetDoc?.data || {
+        uid: '__ekoool_admin_wallet__', cardId: 'admin', cardNumber: targetCardNumber,
         balanceKopecks: 0, status: 'active', createdAt: now,
         expiresAt: now + 100 * YEAR_MS, adminWallet: true
-      };
+      }) : targetDoc.data;
       if (!deps.pool) {
-        if (initialWallet.status !== 'active') return res.status(409).json({ error: 'Кошелёк администратора не активен.' });
+        if (initialWallet.status !== 'active' || Number(initialWallet.expiresAt || (Number(initialWallet.createdAt || 0) + YEAR_MS)) <= now) {
+          return res.status(409).json({ error: 'Карта получателя не активна или срок её действия истёк.' });
+        }
         const balanceKopecks = Number(initialWallet.balanceKopecks || 0) + amountKopecks;
         if (!Number.isSafeInteger(balanceKopecks)) return res.status(409).json({ error: 'Баланс превысит допустимый предел.' });
-        await putDoc('ekoool_cards', walletId, { ...initialWallet, balanceKopecks, updatedAt: now });
+        if (adminTarget && !targetDoc) await putDoc('ekoool_cards', walletId, initialWallet);
+        await putDoc('ekoool_cards', targetId, { ...initialWallet, balanceKopecks, updatedAt: now });
         const transactionId = 'admin_credit_' + crypto.randomBytes(12).toString('hex');
         await putDoc('ekoool_card_txs', transactionId, {
-          uid: '__ekoool_admin_wallet__', cardId: 'admin', type: 'admin_credit',
-          amountKopecks, note: 'Админское начисление: ' + reason, reason,
-          transactionId, ts: now, adminIssued: true
+          uid: String(initialWallet.uid), cardId: initialWallet.cardId || (adminTarget ? 'admin' : 'primary'),
+          type: 'admin_credit', amountKopecks,
+          note: 'Админское начисление: ' + reason, reason, transactionId, ts: now, adminIssued: true
         });
-        return res.json({ ok: true, cardNumber, amountKopecks, balanceKopecks, transactionId, internalBalanceOnly: true });
+        return res.json({ ok: true, cardNumber: initialWallet.cardNumber, targetUid: String(initialWallet.uid), amountKopecks, balanceKopecks, transactionId, internalBalanceOnly: true });
       }
       const client = await deps.pool.connect();
       try {
         await client.query('BEGIN');
-        await client.query(
-          'INSERT INTO ekoool_kv(collection,id,data) VALUES($1,$2,$3) ON CONFLICT(collection,id) DO NOTHING',
-          ['ekoool_cards', walletId, JSON.stringify(initialWallet)]
-        );
+        if (adminTarget) {
+          await client.query(
+            'INSERT INTO ekoool_kv(collection,id,data) VALUES($1,$2,$3) ON CONFLICT(collection,id) DO NOTHING',
+            ['ekoool_cards', walletId, JSON.stringify(initialWallet)]
+          );
+        }
         const row = await client.query(
           'SELECT data FROM ekoool_kv WHERE collection=$1 AND id=$2 FOR UPDATE',
-          ['ekoool_cards', walletId]
+          ['ekoool_cards', targetId]
         );
         const wallet = row.rows[0]?.data;
-        if (!wallet || wallet.cardNumber !== cardNumber || wallet.status !== 'active') {
+        if (!wallet || String(wallet.cardNumber || '') !== targetCardNumber || wallet.status !== 'active' ||
+            Number(wallet.expiresAt || (Number(wallet.createdAt || 0) + YEAR_MS)) <= now) {
           await client.query('ROLLBACK');
-          return res.status(409).json({ error: 'Кошелёк администратора не активен или не прошёл проверку.' });
+          return res.status(409).json({ error: 'Карта получателя не найдена, не активна или срок её действия истёк.' });
         }
         const balanceKopecks = Number(wallet.balanceKopecks || 0) + amountKopecks;
         if (!Number.isSafeInteger(balanceKopecks)) {
@@ -224,25 +240,25 @@ module.exports = function installEkooolCard(app, deps) {
         const transactionId = 'admin_credit_' + crypto.randomBytes(12).toString('hex');
         await client.query(
           'UPDATE ekoool_kv SET data=$3 WHERE collection=$1 AND id=$2',
-          ['ekoool_cards', walletId, JSON.stringify({ ...wallet, balanceKopecks, updatedAt: now })]
+          ['ekoool_cards', targetId, JSON.stringify({ ...wallet, balanceKopecks, updatedAt: now })]
         );
         await client.query(
           'INSERT INTO ekoool_kv(collection,id,data) VALUES($1,$2,$3)',
           ['ekoool_card_txs', transactionId, JSON.stringify({
-            uid: '__ekoool_admin_wallet__', cardId: 'admin', type: 'admin_credit',
-            amountKopecks, note: 'Админское начисление: ' + reason, reason,
-            transactionId, ts: now, adminIssued: true
+            uid: String(wallet.uid), cardId: wallet.cardId || (adminTarget ? 'admin' : 'primary'),
+            type: 'admin_credit', amountKopecks, note: 'Админское начисление: ' + reason,
+            reason, transactionId, ts: now, adminIssued: true
           })]
         );
         await client.query('COMMIT');
-        return res.json({ ok: true, cardNumber, amountKopecks, balanceKopecks, transactionId, internalBalanceOnly: true });
+        return res.json({ ok: true, cardNumber: wallet.cardNumber, targetUid: String(wallet.uid), amountKopecks, balanceKopecks, transactionId, internalBalanceOnly: true });
       } catch (err) {
         await client.query('ROLLBACK');
         throw err;
       } finally { client.release(); }
     } catch (e) {
-      console.error('EKOOOL admin wallet credit failed:', e.message);
-      return res.status(500).json({ error: 'Начисление не выполнено. Баланс не подтверждён; проверьте операции перед повтором.' });
+      console.error('EKOOOL admin credit failed:', e.message);
+      return res.status(500).json({ error: 'Начисление не выполнено. Проверьте историю операций перед повтором.' });
     }
   });
 
