@@ -27,3 +27,8 @@
 - `POST /api/ekoool-card/purchase` — internal purchase debit primitive; must be wired only to trusted server-side catalogue prices.
 
 The BANKA payment creation/settlement path is wired to the existing provider integration, but has not yet been verified with a live payment. The >1,000 RUB limit remains blocked until a real age-verification provider is integrated. Do not describe age verification as active.
+
+
+## Test disclaimer
+
+> **Тестовая функция.** EKOOOL Card предоставляется для тестирования и может содержать ошибки или временно не работать. Пользователь использует тестовую функцию на свой риск; команда EKOOOL не несёт ответственности за возможные потери, сбои или последствия использования тестовой версии. Не используйте средства, которые не готовы потерять.
