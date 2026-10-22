@@ -2,7 +2,7 @@
 
 // EKOOOL Card is an internal closed-loop balance, not a bank-issued payment card.
 module.exports = function installEkooolCard(app, deps) {
-  const { userAuth, getDoc, putDoc, patchDoc, getCollection, crypto, BANKA_API_KEY, BANKA_SHOP_ID } = deps;
+  const { userAuth, getDoc, putDoc, patchDoc, getCollection, crypto, BANKA_API_KEY, BANKA_SHOP_ID, YOTI_API_KEY, YOTI_SDK_ID } = deps;
   const CARD_PREFIX = '5112';
   const TOPUP_LIMIT_RUB = 1000;
   const YEAR_MS = 365 * 24 * 60 * 60 * 1000;
@@ -97,7 +97,7 @@ module.exports = function installEkooolCard(app, deps) {
         .filter(x => String(x.data?.uid) === String(user.id))
         .sort((a,b) => Number(b.data?.ts || 0) - Number(a.data?.ts || 0))
         .slice(0, 50).map(x => ({ type: x.data.type, cardId: x.data.cardId || 'primary', amountKopecks: Number(x.data.amountKopecks || 0), note: String(x.data.note || ''), ts: Number(x.data.ts || 0) }));
-      res.json({ ok: true, card: publicCard(selected.card), cards: cards.map(x => publicCard(x.card)), transactions: txs, topupLimitRub: TOPUP_LIMIT_RUB, ageVerificationConfigured: false });
+      res.json({ ok: true, card: publicCard(selected.card), cards: cards.map(x => publicCard(x.card)), transactions: txs, topupLimitRub: TOPUP_LIMIT_RUB, ageVerificationConfigured: !!(YOTI_API_KEY && YOTI_SDK_ID) });
     } catch (e) { res.status(500).json({ error: 'Не удалось загрузить EKOOOL Card' }); }
   });
 
@@ -214,8 +214,81 @@ module.exports = function installEkooolCard(app, deps) {
       const user = await currentUser(req, res); if (!user) return;
       const resolved = await resolveCard(user.id, req.body?.cardId);
       if (!resolved) return res.status(404).json({ error: 'Сначала выпустите карту EKOOOL.' });
-      return res.status(503).json({ error: 'Провайдер проверки возраста не настроен. Возраст нельзя подтвердить одним нажатием; лимит остаётся 1 000 ₽.', code: 'age_verification_provider_unconfigured' });
-    } catch (e) { res.status(500).json({ error: 'Не удалось начать проверку возраста' }); }
+      if (resolved.card.ageVerified === true) return res.json({ ok: true, alreadyVerified: true, message: 'Возраст уже подтверждён для этой карты.' });
+      if (!YOTI_API_KEY || !YOTI_SDK_ID) return res.status(503).json({ error: 'Yoti пока не настроен на сервере. Добавьте YOTI_API_KEY и YOTI_SDK_ID в Render; лимит остаётся 1 000 ₽.', code: 'age_verification_provider_unconfigured' });
+      const referenceId = 'ecv_' + crypto.randomBytes(18).toString('hex');
+      const baseUrl = String(process.env.PUBLIC_BASE_URL || 'https://ekool-server.onrender.com').replace(/\/$/, '');
+      const payload = {
+        type: 'OVER', ttl: 900, reference_id: referenceId,
+        age_estimation: { allowed: true, threshold: 16, level: 'PASSIVE', authenticity: 'AUTO', retry_limit: 2 },
+        doc_scan: { allowed: true, threshold: 14, level: 'PASSIVE', authenticity: 'AUTO', retry_limit: 2, preset_issuing_country: 'GBR' },
+        digital_id: { allowed: true, threshold: 14, age_estimation_allowed: true, age_estimation_threshold: 16, retry_limit: 2 },
+        credit_card: { allowed: false }, mobile: { allowed: false },
+        callback: { auto: true, url: baseUrl + '/card.html?ageVerification=return' },
+        cancel_url: baseUrl + '/card.html?ageVerification=cancel',
+        privacy_policy: baseUrl + '/privacy.html',
+        notification_url: baseUrl + '/api/ekoool-card/age-verification/notification',
+        synchronous_checks: false
+      };
+      const response = await fetch('https://age.yoti.com/api/v1/sessions', {
+        method: 'POST',
+        headers: { Authorization: 'Bearer ' + YOTI_API_KEY, 'Yoti-Sdk-Id': YOTI_SDK_ID, 'Content-Type': 'application/json', Accept: 'application/json' },
+        body: JSON.stringify(payload), signal: AbortSignal.timeout(12000)
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || !data.id) {
+        console.error('Yoti session creation failed:', response.status, JSON.stringify(data).slice(0, 500));
+        return res.status(502).json({ error: 'Yoti не смог создать сессию проверки. Попробуйте позже.', code: 'yoti_session_creation_failed' });
+      }
+      await patchDoc('ekoool_cards', resolved.key, {
+        ageVerificationSessionId: String(data.id),
+        ageVerificationReferenceId: referenceId,
+        ageVerificationStartedAt: Date.now(),
+        ageVerificationStatus: 'pending'
+      });
+      return res.json({ ok: true, verificationUrl: 'https://age.yoti.com?sessionId=' + encodeURIComponent(data.id) + '&sdkId=' + encodeURIComponent(YOTI_SDK_ID), expiresAt: data.expires_at || null });
+    } catch (e) {
+      console.error('Age verification start error:', e.message);
+      return res.status(502).json({ error: 'Не удалось начать проверку возраста. Лимит остаётся 1 000 ₽.' });
+    }
+  });
+
+  app.get('/api/ekoool-card/age-verification/status', async (req, res) => {
+    try {
+      const user = await currentUser(req, res); if (!user) return;
+      const resolved = await resolveCard(user.id, req.query?.cardId);
+      if (!resolved) return res.status(404).json({ error: 'Карта не найдена.' });
+      if (resolved.card.ageVerified === true) return res.json({ ok: true, status: 'verified', ageVerified: true });
+      if (!YOTI_API_KEY || !YOTI_SDK_ID) return res.status(503).json({ error: 'Yoti не настроен.', ageVerified: false });
+      const sessionId = String(resolved.card.ageVerificationSessionId || '');
+      const referenceId = String(resolved.card.ageVerificationReferenceId || '');
+      if (!sessionId || !referenceId) return res.json({ ok: true, status: 'not_started', ageVerified: false });
+      const response = await fetch('https://age.yoti.com/api/v1/sessions/' + encodeURIComponent(sessionId) + '/result', {
+        headers: { Authorization: 'Bearer ' + YOTI_API_KEY, 'Yoti-Sdk-Id': YOTI_SDK_ID, Accept: 'application/json' },
+        signal: AbortSignal.timeout(10000)
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) return res.status(502).json({ error: 'Не удалось получить результат Yoti.', ageVerified: false });
+      if (String(data.id || '') !== sessionId || String(data.reference_id || '') !== referenceId) return res.status(502).json({ error: 'Не удалось подтвердить соответствие результата сессии.', ageVerified: false });
+      if (data.status === 'COMPLETE' && data.type === 'OVER' && Number(data.age) === 14) {
+        await patchDoc('ekoool_cards', resolved.key, { ageVerified: true, ageVerifiedAt: Date.now(), ageVerificationStatus: 'verified', ageVerificationMethod: String(data.method || '') });
+        return res.json({ ok: true, status: 'verified', ageVerified: true, message: 'Проверка возраста 14+ пройдена.' });
+      }
+      if (['FAIL', 'ERROR', 'CANCELLED', 'EXPIRED'].includes(String(data.status || ''))) {
+        await patchDoc('ekoool_cards', resolved.key, { ageVerificationStatus: String(data.status).toLowerCase() });
+        return res.json({ ok: true, status: String(data.status).toLowerCase(), ageVerified: false, message: 'Возраст не подтверждён. Лимит остаётся 1 000 ₽.' });
+      }
+      return res.json({ ok: true, status: String(data.status || 'pending').toLowerCase(), ageVerified: false, message: 'Проверка ещё выполняется.' });
+    } catch (e) {
+      console.error('Age verification status error:', e.message);
+      return res.status(502).json({ error: 'Не удалось проверить статус. Попробуйте ещё раз.', ageVerified: false });
+    }
+  });
+
+  app.post('/api/ekoool-card/age-verification/notification', async (req, res) => {
+    // Yoti notifications are informational only; the authenticated status endpoint fetches
+    // the authoritative session result from Yoti before changing a card's verified state.
+    return res.status(200).json({ ok: true });
   });
 
   app.post('/api/ekoool-card/purchase', async (req, res) => {
