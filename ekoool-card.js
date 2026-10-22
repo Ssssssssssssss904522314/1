@@ -166,6 +166,86 @@ module.exports = function installEkooolCard(app, deps) {
     }
   });
 
+  // Admin-only manual credit to the internal administrator wallet. This does not represent real money.
+  app.post('/api/ekoool-card/admin/credit', async (req, res) => {
+    try {
+      if (typeof isAdmin !== 'function' || !isAdmin(req)) return res.status(401).json({ error: 'Только администратор.' });
+      const amountRub = Number(req.body?.amountRub);
+      const reason = String(req.body?.reason || '').trim().slice(0, 160);
+      if (!Number.isSafeInteger(amountRub) || amountRub < 1 || amountRub > 1000000) {
+        return res.status(400).json({ error: 'Введите целую сумму от 1 до 1 000 000 ₽.' });
+      }
+      if (!reason) return res.status(400).json({ error: 'Укажите основание начисления.' });
+      const walletId = '__ekoool_admin_wallet__';
+      const cardNumber = '666600001111';
+      const now = Date.now();
+      const amountKopecks = amountRub * 100;
+      if (!Number.isSafeInteger(amountKopecks)) return res.status(400).json({ error: 'Сумма слишком велика.' });
+      const existing = await getDoc('ekoool_cards', walletId);
+      const initialWallet = existing || {
+        uid: '__ekoool_admin_wallet__', cardId: 'admin', cardNumber,
+        balanceKopecks: 0, status: 'active', createdAt: now,
+        expiresAt: now + 100 * YEAR_MS, adminWallet: true
+      };
+      if (!deps.pool) {
+        if (initialWallet.status !== 'active') return res.status(409).json({ error: 'Кошелёк администратора не активен.' });
+        const balanceKopecks = Number(initialWallet.balanceKopecks || 0) + amountKopecks;
+        if (!Number.isSafeInteger(balanceKopecks)) return res.status(409).json({ error: 'Баланс превысит допустимый предел.' });
+        await putDoc('ekoool_cards', walletId, { ...initialWallet, balanceKopecks, updatedAt: now });
+        const transactionId = 'admin_credit_' + crypto.randomBytes(12).toString('hex');
+        await putDoc('ekoool_card_txs', transactionId, {
+          uid: '__ekoool_admin_wallet__', cardId: 'admin', type: 'admin_credit',
+          amountKopecks, note: 'Админское начисление: ' + reason, reason,
+          transactionId, ts: now, adminIssued: true
+        });
+        return res.json({ ok: true, cardNumber, amountKopecks, balanceKopecks, transactionId, internalBalanceOnly: true });
+      }
+      const client = await deps.pool.connect();
+      try {
+        await client.query('BEGIN');
+        await client.query(
+          'INSERT INTO ekoool_kv(collection,id,data) VALUES($1,$2,$3) ON CONFLICT(collection,id) DO NOTHING',
+          ['ekoool_cards', walletId, JSON.stringify(initialWallet)]
+        );
+        const row = await client.query(
+          'SELECT data FROM ekoool_kv WHERE collection=$1 AND id=$2 FOR UPDATE',
+          ['ekoool_cards', walletId]
+        );
+        const wallet = row.rows[0]?.data;
+        if (!wallet || wallet.cardNumber !== cardNumber || wallet.status !== 'active') {
+          await client.query('ROLLBACK');
+          return res.status(409).json({ error: 'Кошелёк администратора не активен или не прошёл проверку.' });
+        }
+        const balanceKopecks = Number(wallet.balanceKopecks || 0) + amountKopecks;
+        if (!Number.isSafeInteger(balanceKopecks)) {
+          await client.query('ROLLBACK');
+          return res.status(409).json({ error: 'Баланс превысит допустимый предел.' });
+        }
+        const transactionId = 'admin_credit_' + crypto.randomBytes(12).toString('hex');
+        await client.query(
+          'UPDATE ekoool_kv SET data=$3 WHERE collection=$1 AND id=$2',
+          ['ekoool_cards', walletId, JSON.stringify({ ...wallet, balanceKopecks, updatedAt: now })]
+        );
+        await client.query(
+          'INSERT INTO ekoool_kv(collection,id,data) VALUES($1,$2,$3)',
+          ['ekoool_card_txs', transactionId, JSON.stringify({
+            uid: '__ekoool_admin_wallet__', cardId: 'admin', type: 'admin_credit',
+            amountKopecks, note: 'Админское начисление: ' + reason, reason,
+            transactionId, ts: now, adminIssued: true
+          })]
+        );
+        await client.query('COMMIT');
+        return res.json({ ok: true, cardNumber, amountKopecks, balanceKopecks, transactionId, internalBalanceOnly: true });
+      } catch (err) {
+        await client.query('ROLLBACK');
+        throw err;
+      } finally { client.release(); }
+    } catch (e) {
+      console.error('EKOOOL admin wallet credit failed:', e.message);
+      return res.status(500).json({ error: 'Начисление не выполнено. Баланс не подтверждён; проверьте операции перед повтором.' });
+    }
+  });
+
   app.get('/api/ekoool-card/admin/cards', async (req, res) => {
     try {
       if (typeof isAdmin !== 'function' || !isAdmin(req)) return res.status(401).json({ error: 'Только администратор.' });
